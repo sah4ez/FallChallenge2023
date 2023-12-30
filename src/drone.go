@@ -1,6 +1,8 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // MOVE <x> <y> <light (1|0)> | WAIT <light (1|0)>
 type Drone struct {

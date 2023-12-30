@@ -1,6 +1,8 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type GameState struct {
 	CreatureCount int            `json:"creatureCount"`
