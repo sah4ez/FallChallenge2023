@@ -45,12 +45,18 @@ func (d *Drone) Light() string {
 	return "0"
 }
 
-func (d *Drone) Wait() {
-	fmt.Printf("WAIT %s\n", d.Light())
+func (d *Drone) Wait(msg string) {
+	if msg == "" {
+		msg = fmt.Printf("%d %d", d.X, d.Y)
+	}
+	fmt.Printf("WAIT %s %s\n", d.Light(), msg)
 }
 
-func (d *Drone) Move(x, y int) {
-	fmt.Printf("MOVE %d %d %s\n", x, y, d.Light())
+func (d *Drone) Move(x, y int, msg string) {
+	if msg == "" {
+		msg = fmt.Printf("%d %d", d.X, d.Y)
+	}
+	fmt.Printf("MOVE %d %d %s %s\n", x, y, d.Light(), msg)
 }
 
 func (d *Drone) Debug() {
