@@ -49,6 +49,10 @@ func (d *Drone) Move(x, y int) {
 	fmt.Printf("MOVE %d %d %s\n", x, y, d.Light())
 }
 
+func (d *Drone) Debug() {
+
+}
+
 func NewDrone() Drone {
 	d := Drone{}
 	fmt.Scan(&d.ID, &d.X, &d.Y, &d.Emergency, &d.Battery)
