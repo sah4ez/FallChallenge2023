@@ -8,8 +8,9 @@ type GameState struct {
 	CreatureCount int            `json:"creatureCount"`
 	Creatures     []GameCreature `json:"creatures"`
 
-	Resurface   map[int]Point
-	DroneTarget map[int]int
+	Resurface       map[int]Point
+	DroneTarget     map[int]int
+	TargetCreatures map[int]struct{}
 
 	CreaturesTouched map[int]map[int]struct{}
 
@@ -45,8 +46,13 @@ func (g *GameState) RemoveResurface(id int) {
 	delete(g.Resurface, id)
 }
 
-func (g *GameState) AddDroneTarget(droneID int, captureID int) {
+func (g *GameState) AddDroneTarget(droneID int, captureID int) (ok bool) {
+	if _, ok = g.TargetCreatures[captureID]; ok {
+		return !ok
+	}
+	g.TargetCreatures[captureID] = struct{}{}
 	g.DroneTarget[droneID] = captureID
+	return true
 }
 
 func (g *GameState) RemoveDroneTarget(droneID int) {
@@ -69,6 +75,7 @@ func NewGame() *GameState {
 		States:           make(map[int]*State),
 		Resurface:        make(map[int]Point),
 		DroneTarget:      make(map[int]int),
+		TargetCreatures:  make(map[int]struct{}, 0),
 		CreaturesTouched: make(map[int]map[int]struct{}, 0),
 	}
 }

@@ -7,5 +7,6 @@ source_file:
 	cat src/*.go | awk '/import \(/,/\)/' | sed '/import (/d;/)/d' | sort | uniq >> game/main.go
 	@echo ")" >> game/main.go
 	cat src/*.go | egrep -v "(package|import|^\)|	\")" >> game/main.go
+	# sed -i '/fmt.Fprint.*/d' game/main.go
 	goimports -w game/main.go    
 	go vet ./...

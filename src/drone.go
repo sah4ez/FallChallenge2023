@@ -42,6 +42,10 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 
 	min := math.MaxFloat64
 	for _, c := range s.Creatures {
+		if _, ok := g.TargetCreatures[c.ID]; ok {
+			fmt.Fprintln(os.Stderr, c.ID, "skip as target in other drone")
+			continue
+		}
 		if v, ok := g.CreaturesTouched[d.ID]; ok {
 			if len(v) > 0 {
 				if _, ok := v[c.ID]; ok {
@@ -64,7 +68,9 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 }
 
 func (d *Drone) TurnLight() {
-	d.enabledLight = true
+	if d.Battery > LightBattary && d.Y > int(MaxPosistionY/2)-AutoScanDistance {
+		d.enabledLight = true
+	}
 }
 
 func (d *Drone) Light() string {

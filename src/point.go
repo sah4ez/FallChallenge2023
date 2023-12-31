@@ -21,7 +21,6 @@ func (p Point) String() string {
 func ShiftByRadar(radar string, x, y int) (p Point) {
 
 	p = Point{X: x, Y: y}
-	origP := Point{X: x, Y: y}
 	switch radar {
 	case "TR":
 		p.X, p.Y = p.X+ShiftByRadarDistance, p.Y-ShiftByRadarDistance
@@ -32,7 +31,7 @@ func ShiftByRadar(radar string, x, y int) (p Point) {
 	case "BL":
 		p.X, p.Y = p.X-ShiftByRadarDistance, p.Y+ShiftByRadarDistance
 	}
-	fmt.Fprintln(os.Stderr, "by radar", radar, p.String(), origP.String())
+	fmt.Fprintln(os.Stderr, "by radar", radar, p.String(), (Point{X: x, Y: y}).String())
 	if p.X <= MinPosistionX || p.X >= MaxPosistionX {
 		fmt.Fprintln(os.Stderr, "out x", p.String())
 		p.X = int(MaxPosistionX / 2)

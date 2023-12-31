@@ -12,7 +12,7 @@ func main() {
 
 	for {
 		s := game.LoadState()
-		s.DebugRadar()
+		// s.DebugRadar()
 
 		for i := range s.MyDrones {
 			drone := s.MyDrones[i]
@@ -26,7 +26,7 @@ func main() {
 				game.RemoveResurface(drone.ID)
 			}
 
-			if len(s.DroneScnas[drone.ID]) >= 1 {
+			if len(s.DroneScnas[drone.ID]) >= 2 {
 				game.AddResurface(drone.ID, Point{X: drone.X, Y: int(SurfaceDistance)})
 			}
 			newPoint, dist, cID := drone.FindNearCapture(game, s)
@@ -42,7 +42,15 @@ func main() {
 				drone.TurnLight()
 				drone.Move(newPoint)
 			} else {
+				var hasRadar bool
+				s.DebugRadar()
 				for _, r := range s.Radar {
+					if r.DroneID != drone.ID {
+						continue
+					}
+					if hasRadar {
+						break
+					}
 					var found bool
 					for _, cs := range game.CreaturesTouched {
 						_, found = cs[r.CreatureID]
@@ -52,19 +60,28 @@ func main() {
 					}
 					cID, ok := game.DroneTarget[drone.ID]
 					if r.DroneID == drone.ID && !ok {
+						if added := game.AddDroneTarget(drone.ID, r.CreatureID); !added {
+							fmt.Fprintln(os.Stderr, "not added target", len(game.TargetCreatures))
+							continue
+						}
+
 						drone.MoveToRadar(r.Radar)
-						game.AddDroneTarget(drone.ID, r.CreatureID)
 						fmt.Fprintln(os.Stderr, drone.ID, "no target")
+						hasRadar = true
 						continue
 					} else if r.DroneID == drone.ID && ok && r.CreatureID == cID {
 						drone.TurnLight()
 						drone.MoveToRadar(r.Radar)
 						fmt.Fprintln(os.Stderr, drone.ID, "target", cID)
+						hasRadar = true
 						continue
+					} else {
+						fmt.Fprintf(os.Stderr, "%v\n", game.DroneTarget)
 					}
 				}
-				// drone.Wait()
-				// s.DebugRadar()
+				if !hasRadar {
+					drone.Wait()
+				}
 			}
 		}
 	}

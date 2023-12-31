@@ -9,3 +9,4 @@ const MaxPosistionX = 9999
 const MaxPosistionY = 9999
 const MinPosistionX = 0
 const MinPosistionY = 0
+const LightBattary = 5
