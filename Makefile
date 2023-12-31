@@ -8,3 +8,4 @@ source_file:
 	@echo ")" >> game/main.go
 	cat src/*.go | egrep -v "(package|import|^\)|	\")" >> game/main.go
 	goimports -w game/main.go    
+	go vet ./...

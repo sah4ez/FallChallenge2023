@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 )
 
 type State struct {
@@ -9,7 +10,7 @@ type State struct {
 	FoeScore int
 
 	MyScanCount int
-	MyCreatures []int
+	MyCreatures map[int]struct{}
 
 	FoeScanCount int
 	FoeCreatures []int
@@ -21,24 +22,32 @@ type State struct {
 	FoeDrones     []Drone
 
 	DroneScanCount int
-	DroneScnas     map[int]int
+	DroneScnas     map[int]map[int]struct{}
 
 	VisibleCreatureCount int
 	Creatures            []Creature
 
 	RadarBlipCount int
 	Radar          []Radar
+	MapRadar       map[int]Radar
 }
 
-func NewState() State {
-	s := State{
-		MyCreatures:  make([]int, 0),
+func (s *State) DebugRadar() {
+	for _, r := range s.Radar {
+		fmt.Fprintf(os.Stderr, "%d %d %s\n", r.DroneID, r.CreatureID, r.Radar)
+	}
+}
+
+func NewState() *State {
+	s := &State{
+		MyCreatures:  make(map[int]struct{}, 0),
 		FoeCreatures: make([]int, 0),
 		MyDrones:     make([]Drone, 0),
 		FoeDrones:    make([]Drone, 0),
-		DroneScnas:   make(map[int]int, 0),
+		DroneScnas:   make(map[int]map[int]struct{}, 0),
 		Creatures:    make([]Creature, 0),
 		Radar:        make([]Radar, 0),
+		MapRadar:     make(map[int]Radar, 0),
 	}
 
 	fmt.Scan(&s.MyScore)
@@ -48,7 +57,7 @@ func NewState() State {
 	for i := 0; i < s.MyScanCount; i++ {
 		var creatureId int
 		fmt.Scan(&creatureId)
-		s.MyCreatures = append(s.MyCreatures, creatureId)
+		s.MyCreatures[creatureId] = struct{}{}
 	}
 
 	fmt.Scan(&s.FoeScanCount)
@@ -72,7 +81,11 @@ func NewState() State {
 	for i := 0; i < s.DroneScanCount; i++ {
 		var droneId, creatureId int
 		fmt.Scan(&droneId, &creatureId)
-		s.DroneScnas[droneId] = creatureId
+		if _, ok := s.DroneScnas[droneId]; ok {
+			s.DroneScnas[droneId][creatureId] = struct{}{}
+		} else {
+			s.DroneScnas[droneId] = map[int]struct{}{creatureId: struct{}{}}
+		}
 	}
 
 	fmt.Scan(&s.VisibleCreatureCount)
@@ -84,7 +97,9 @@ func NewState() State {
 	fmt.Scan(&s.RadarBlipCount)
 
 	for i := 0; i < s.RadarBlipCount; i++ {
-		s.Radar = append(s.Radar, NewRadar())
+		r := NewRadar()
+		s.Radar = append(s.Radar, r)
+		s.MapRadar[r.DroneID] = r
 	}
 
 	return s
