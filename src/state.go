@@ -36,15 +36,21 @@ type State struct {
 func (s *State) DebugRadar() {
 	fmt.Fprintf(os.Stderr, "got radar: ")
 	for _, r := range s.Radar {
-		fmt.Fprintf(os.Stderr, "(%d %d %s),", r.DroneID, r.CreatureID, r.Radar)
+		fmt.Fprintf(os.Stderr, "(%s %d %d),", r.Radar, r.DroneID, r.CreatureID)
 	}
 	fmt.Fprintln(os.Stderr)
 }
 
 func (s *State) DebugRadarByDroneID(droneID int) {
-	fmt.Fprintf(os.Stderr, "got radar %d: ", droneID)
+	var d Drone
+	for _, d = range s.MyDrones {
+		if d.ID == droneID {
+			break
+		}
+	}
+	fmt.Fprintf(os.Stderr, "got radar %d (%s): ", droneID, d.DetectMode())
 	for _, r := range s.MapRadar[droneID] {
-		fmt.Fprintf(os.Stderr, "(%d %s),", r.CreatureID, r.Radar)
+		fmt.Fprintf(os.Stderr, "(%s %d),", r.Radar, r.CreatureID)
 	}
 	fmt.Fprintln(os.Stderr)
 }

@@ -16,6 +16,8 @@ type GameState struct {
 
 	CreaturesTouched map[int]map[int]struct{}
 
+	MapDroneLigthCount map[string]map[int]int
+
 	Tick   int
 	States map[int]*State
 }
@@ -60,8 +62,8 @@ func (g *GameState) AddDroneTarget(droneID int, captureID int) (ok bool) {
 	return true
 }
 
-func (g *GameState) RemoveDroneTarget(droneID int) {
-	delete(g.DroneTarget, droneID)
+func (g *GameState) RemoveDroneTarget(drone Drone) {
+	delete(g.DroneTarget, drone.ID)
 }
 
 func (g *GameState) IsTouchedCreature(creatureID int) bool {
@@ -82,12 +84,37 @@ func (g *GameState) TouchCreature(droneID int, creatureID int) {
 	g.CreaturesTouched[droneID] = v
 }
 
+func (g *GameState) GetCreature(creatureID int) *GameCreature {
+	if c, ok := g.MapCreatures[creatureID]; ok {
+		return c
+	}
+	return nil
+}
+
 func (g *GameState) DebugCreatures() {
 	fmt.Fprintf(os.Stderr, "got creatrues:")
 	for _, c := range g.Creatures {
 		fmt.Fprintf(os.Stderr, "(%d %d %d)", c.ID, c.Color, c.Type)
 	}
 	fmt.Fprintln(os.Stderr)
+}
+
+func (g *GameState) GetCoutLights(drone *Drone) int {
+	state := drone.DetectMode()
+	st, ok := g.MapDroneLigthCount[state]
+	if !ok {
+		return 0
+	}
+	cnt, ok := st[drone.ID]
+	if !ok {
+		return 0
+	}
+	defer func() {
+		if cnt > 0 {
+			g.MapDroneLigthCount[state][drone.ID] = cnt - 1
+		}
+	}()
+	return cnt
 }
 
 func NewGame() *GameState {
@@ -99,5 +126,23 @@ func NewGame() *GameState {
 		DroneTarget:      make(map[int]int),
 		TargetCreatures:  make(map[int]struct{}, 0),
 		CreaturesTouched: make(map[int]map[int]struct{}, 0),
+		MapDroneLigthCount: map[string]map[int]int{
+			ModeType0: map[int]int{
+				0: 0,
+				1: 0,
+			},
+			ModeType1: map[int]int{
+				0: 1,
+				1: 1,
+			},
+			ModeType2: map[int]int{
+				0: 2,
+				1: 2,
+			},
+			ModeType3: map[int]int{
+				0: 3,
+				1: 3,
+			},
+		},
 	}
 }

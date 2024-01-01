@@ -12,3 +12,7 @@ const MinPosistionY = 0
 const LightBattary = 5
 const MinRandStep = -600
 const MaxRandStep = 600
+const ModeType0 = "0-2500"
+const ModeType1 = "2500-5000"
+const ModeType2 = "5000-7500"
+const ModeType3 = "7500-10000"

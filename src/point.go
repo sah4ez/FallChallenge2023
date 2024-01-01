@@ -42,3 +42,28 @@ func ShiftByRadar(radar string, x, y int) (p Point) {
 	}
 	return p
 }
+
+func ShiftByRadarByMonster(radar string, x, y int) (p Point) {
+
+	p = Point{X: x, Y: y}
+	switch radar {
+	case "TR":
+		p.X, p.Y = p.X-ShiftByRadarDistance, p.Y+ShiftByRadarDistance
+	case "TL":
+		p.X, p.Y = p.X+ShiftByRadarDistance, p.Y+ShiftByRadarDistance
+	case "BR":
+		p.X, p.Y = p.X-ShiftByRadarDistance, p.Y-ShiftByRadarDistance
+	case "BL":
+		p.X, p.Y = p.X+ShiftByRadarDistance, p.Y-ShiftByRadarDistance
+	}
+	fmt.Fprintln(os.Stderr, "by monster radar", radar, p.String(), (Point{X: x, Y: y}).String())
+	if p.X <= MinPosistionX || p.X >= MaxPosistionX {
+		fmt.Fprintln(os.Stderr, "out x", p.String())
+		p.X = int(MaxPosistionX / 2)
+	}
+	if p.Y <= MinPosistionY || p.Y >= MaxPosistionY {
+		fmt.Fprintln(os.Stderr, "out y", p.String())
+		p.Y = int(MaxPosistionY / 2)
+	}
+	return p
+}

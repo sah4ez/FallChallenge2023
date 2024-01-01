@@ -20,6 +20,10 @@ type Drone struct {
 	scanned      map[int]struct{}
 }
 
+func (d *Drone) IsEmergency() bool {
+	return d.Emergency == 1
+}
+
 func (d *Drone) IsSurfaced() bool {
 	return d.Y <= SurfaceDistance
 }
@@ -74,7 +78,8 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 }
 
 func (d *Drone) TurnLight(g *GameState) {
-	if d.Battery > LightBattary && d.Y > int(MaxPosistionY/2)-AutoScanDistance {
+	cnt := g.GetCoutLights(d)
+	if d.Battery > LightBattary && cnt > 0 {
 		d.enabledLight = true
 	}
 }
@@ -97,6 +102,11 @@ func (d *Drone) Wait(msg ...string) {
 
 func (d *Drone) MoveToRadar(radar string, msg ...string) {
 	p := ShiftByRadar(radar, d.X, d.Y)
+	d.Move(p, msg...)
+}
+
+func (d *Drone) MoveToRadarByMonster(radar string, msg ...string) {
+	p := ShiftByRadarByMonster(radar, d.X, d.Y)
 	d.Move(p, msg...)
 }
 
@@ -125,6 +135,18 @@ func (d *Drone) Move(p Point, msg ...string) {
 		p.Y = MaxPosistionY - AutoScanDistance + 3
 	}
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
+}
+
+func (d *Drone) DetectMode() string {
+	if d.Y < 2500 {
+		return ModeType0
+	} else if d.Y < 5000 {
+		return ModeType1
+	} else if d.Y < 7500 {
+		return ModeType2
+	} else {
+		return ModeType3
+	}
 }
 
 func (d *Drone) Debug() {

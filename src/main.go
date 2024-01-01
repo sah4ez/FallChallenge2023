@@ -18,6 +18,12 @@ func main() {
 
 		for i := range s.MyDrones {
 			drone := s.MyDrones[i]
+			if drone.IsEmergency() {
+				game.RemoveDroneTarget(drone)
+				fmt.Fprintln(os.Stderr, drone.ID, "emergency", s.DroneScnas[drone.ID])
+				drone.Wait()
+				continue
+			}
 
 			if p, ok := game.Resurface[drone.ID]; ok {
 				if !drone.IsSurfaced() {
@@ -32,14 +38,14 @@ func main() {
 
 			if len(s.DroneScnas[drone.ID]) >= 1 && drone.NeedSurface(int(dist)) {
 				game.AddResurface(drone.ID, Point{X: drone.X, Y: int(SurfaceDistance)})
-			} else if len(s.DroneScnas[drone.ID]) >= 6 {
+			} else if len(s.DroneScnas[drone.ID]) >= 2 {
 				game.AddResurface(drone.ID, Point{X: drone.X, Y: int(SurfaceDistance)})
 			}
 
 			if !newPoint.IsZero() {
 				targetCaptureID, ok := game.DroneTarget[drone.ID]
 				if dist <= AutoScanDistance && targetCaptureID == cID && ok {
-					game.RemoveDroneTarget(drone.ID)
+					game.RemoveDroneTarget(drone)
 				}
 				if dist <= AutoScanDistance {
 					game.TouchCreature(drone.ID, cID)
@@ -55,7 +61,19 @@ func main() {
 						continue
 					}
 					cID, ok := game.DroneTarget[drone.ID]
-					if r.DroneID == drone.ID && !ok {
+					creature := game.GetCreature(cID)
+					if cID > 0 && creature == nil {
+						fmt.Fprintln(os.Stderr, "craeture empty", cID)
+						continue
+					}
+					if creature != nil && creature.IsMonster() {
+						switch drone.DetectMode() {
+						case ModeType1, ModeType2, ModeType3:
+							fmt.Fprintln(os.Stderr, "detect monster", cID)
+							continue
+						}
+					}
+					if r.DroneID == drone.ID && !ok && !creature.IsMonster() {
 						if added := game.AddDroneTarget(drone.ID, r.CreatureID); !added {
 							fmt.Fprintln(os.Stderr, "not added target", len(game.TargetCreatures))
 							continue
@@ -65,7 +83,7 @@ func main() {
 						fmt.Fprintln(os.Stderr, drone.ID, "no target")
 						hasRadar = true
 						continue
-					} else if r.DroneID == drone.ID && ok && r.CreatureID == cID {
+					} else if r.DroneID == drone.ID && ok && r.CreatureID == cID && !creature.IsMonster() {
 						drone.TurnLight(game)
 						drone.MoveToRadar(r.Radar)
 						fmt.Fprintln(os.Stderr, drone.ID, "target", cID)
@@ -73,7 +91,7 @@ func main() {
 						continue
 					} else {
 						if !s.CheckCreatureID(drone.ID, cID) {
-							game.RemoveDroneTarget(drone.ID)
+							game.RemoveDroneTarget(drone)
 							fmt.Fprintf(os.Stderr, "%d missing %d clear target\n", drone.ID, r.CreatureID)
 
 						} else {
