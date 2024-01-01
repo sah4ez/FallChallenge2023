@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 )
 
 type State struct {
@@ -29,16 +30,47 @@ type State struct {
 
 	RadarBlipCount int
 	Radar          []Radar
-	MapRadar       map[int]Radar
+	MapRadar       map[int][]Radar
 }
 
 func (s *State) DebugRadar() {
+	fmt.Fprintf(os.Stderr, "got radar: ")
 	for _, r := range s.Radar {
-		fmt.Fprintf(os.Stderr, "%d %d %s\n", r.DroneID, r.CreatureID, r.Radar)
+		fmt.Fprintf(os.Stderr, "(%d %d %s),", r.DroneID, r.CreatureID, r.Radar)
 	}
+	fmt.Fprintln(os.Stderr)
 }
 
-func NewState() *State {
+func (s *State) DebugRadarByDroneID(droneID int) {
+	fmt.Fprintf(os.Stderr, "got radar %d: ", droneID)
+	for _, r := range s.MapRadar[droneID] {
+		fmt.Fprintf(os.Stderr, "(%d %s),", r.CreatureID, r.Radar)
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+func (s *State) DebugVisibleCreatures() {
+	fmt.Fprintf(os.Stderr, "Visible: ")
+	for _, c := range s.Creatures {
+		fmt.Fprintf(os.Stderr, "(%d %d %d %d %d),", c.ID, c.X, c.Y, c.Vx, c.Vy)
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+func (s *State) CheckCreatureID(droneID int, creatureID int) bool {
+	v, ok := s.MapRadar[droneID]
+	if !ok {
+		return ok
+	}
+	for _, r := range v {
+		if r.CreatureID == creatureID {
+			return true
+		}
+	}
+	return false
+}
+
+func NewState(g *GameState) *State {
 	s := &State{
 		MyCreatures:  make(map[int]struct{}, 0),
 		FoeCreatures: make([]int, 0),
@@ -47,7 +79,7 @@ func NewState() *State {
 		DroneScnas:   make(map[int]map[int]struct{}, 0),
 		Creatures:    make([]Creature, 0),
 		Radar:        make([]Radar, 0),
-		MapRadar:     make(map[int]Radar, 0),
+		MapRadar:     make(map[int][]Radar, 0),
 	}
 
 	fmt.Scan(&s.MyScore)
@@ -93,14 +125,29 @@ func NewState() *State {
 	for i := 0; i < s.VisibleCreatureCount; i++ {
 		s.Creatures = append(s.Creatures, NewCreature())
 	}
+	sort.SliceStable(s.Creatures, func(i, j int) bool {
+		ir := g.MapCreatures[s.Creatures[i].ID]
+		jr := g.MapCreatures[s.Creatures[j].ID]
+		return ir.Type < jr.Type
+	})
 
 	fmt.Scan(&s.RadarBlipCount)
 
 	for i := 0; i < s.RadarBlipCount; i++ {
 		r := NewRadar()
 		s.Radar = append(s.Radar, r)
-		s.MapRadar[r.DroneID] = r
+		if v, ok := s.MapRadar[r.DroneID]; !ok {
+			s.MapRadar[r.DroneID] = []Radar{r}
+		} else {
+			v = append(v, r)
+			s.MapRadar[r.DroneID] = v
+		}
 	}
+	sort.SliceStable(s.Radar, func(i, j int) bool {
+		ir := g.MapCreatures[s.Radar[i].CreatureID]
+		jr := g.MapCreatures[s.Radar[j].CreatureID]
+		return ir.Type < jr.Type
+	})
 
 	return s
 }

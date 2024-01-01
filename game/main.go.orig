@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -17,6 +19,8 @@ const MaxPosistionY = 9999
 const MinPosistionX = 0
 const MinPosistionY = 0
 const LightBattary = 5
+const MinRandStep = -600
+const MaxRandStep = 600
 
 type Creature struct {
 	ID int
@@ -50,6 +54,11 @@ func (d *Drone) IsSurfaced() bool {
 
 func (d *Drone) Distance(x, y int) float64 {
 	return math.Sqrt(math.Pow(float64(d.X-x), 2) + math.Pow(float64(d.Y-y), 2))
+}
+
+func (d *Drone) NeedSurface(nearestDist int) bool {
+	distanceSurface := d.Distance(d.X, SurfaceDistance)
+	return distanceSurface < float64(nearestDist)
 }
 
 func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cID int) {
@@ -92,7 +101,7 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 	return
 }
 
-func (d *Drone) TurnLight() {
+func (d *Drone) TurnLight(g *GameState) {
 	if d.Battery > LightBattary && d.Y > int(MaxPosistionY/2)-AutoScanDistance {
 		d.enabledLight = true
 	}
@@ -119,10 +128,29 @@ func (d *Drone) MoveToRadar(radar string, msg ...string) {
 	d.Move(p, msg...)
 }
 
+func (d *Drone) RandMove() {
+	x := rand.Intn(MaxRandStep-MinRandStep) + MinRandStep
+	y := rand.Intn(MaxRandStep-MinRandStep) + MinRandStep
+	d.Move(Point{X: d.X + x, Y: d.Y + y}, "random")
+}
+
 func (d *Drone) Move(p Point, msg ...string) {
 	if len(msg) == 0 {
 		msg = append(msg, fmt.Sprintf("p: %d %d to: %d %d", d.X, d.Y, p.X, p.Y))
 		fmt.Fprintf(os.Stderr, strings.Join(msg, " ")+"\n")
+	}
+	if p.X < 0 {
+		p.X = 0
+	}
+	if p.X > MaxPosistionX-AutoScanDistance+3 {
+		p.X = MaxPosistionX - AutoScanDistance + 3
+	}
+
+	if p.Y < 0 {
+		p.Y = 0
+	}
+	if p.Y > MaxPosistionY-AutoScanDistance+3 {
+		p.Y = MaxPosistionY - AutoScanDistance + 3
 	}
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
 }
@@ -139,8 +167,9 @@ func NewDrone() Drone {
 }
 
 type GameState struct {
-	CreatureCount int            `json:"creatureCount"`
-	Creatures     []GameCreature `json:"creatures"`
+	CreatureCount int
+	Creatures     []*GameCreature
+	MapCreatures  map[int]*GameCreature
 
 	Resurface       map[int]Point
 	DroneTarget     map[int]int
@@ -156,7 +185,9 @@ func (g *GameState) LoadCreatures() {
 
 	fmt.Scan(&g.CreatureCount)
 	for i := 0; i < g.CreatureCount; i++ {
-		g.Creatures = append(g.Creatures, NewGameCreature())
+		gc := NewGameCreature()
+		g.Creatures = append(g.Creatures, gc)
+		g.MapCreatures[gc.ID] = gc
 	}
 }
 
@@ -167,7 +198,8 @@ func (g *GameState) NewTick() {
 func (g *GameState) LoadState() *State {
 	defer g.NewTick()
 
-	s := NewState()
+	fmt.Fprintln(os.Stderr, "tick: ", g.Tick)
+	s := NewState(g)
 	g.States[g.Tick] = s
 	return s
 }
@@ -184,12 +216,21 @@ func (g *GameState) AddDroneTarget(droneID int, captureID int) (ok bool) {
 	if _, ok = g.TargetCreatures[captureID]; ok {
 		return !ok
 	}
+	g.TargetCreatures[captureID] = struct{}{}
 	g.DroneTarget[droneID] = captureID
 	return true
 }
 
 func (g *GameState) RemoveDroneTarget(droneID int) {
 	delete(g.DroneTarget, droneID)
+}
+
+func (g *GameState) IsTouchedCreature(creatureID int) bool {
+	var found bool
+	for _, cs := range g.CreaturesTouched {
+		_, found = cs[creatureID]
+	}
+	return found
 }
 
 func (g *GameState) TouchCreature(droneID int, creatureID int) {
@@ -202,9 +243,18 @@ func (g *GameState) TouchCreature(droneID int, creatureID int) {
 	g.CreaturesTouched[droneID] = v
 }
 
+func (g *GameState) DebugCreatures() {
+	fmt.Fprintf(os.Stderr, "got creatrues:")
+	for _, c := range g.Creatures {
+		fmt.Fprintf(os.Stderr, "(%d %d %d)", c.ID, c.Color, c.Type)
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
 func NewGame() *GameState {
 	return &GameState{
-		Creatures:        make([]GameCreature, 0),
+		Creatures:        make([]*GameCreature, 0),
+		MapCreatures:     make(map[int]*GameCreature, 0),
 		States:           make(map[int]*State),
 		Resurface:        make(map[int]Point),
 		DroneTarget:      make(map[int]int),
@@ -219,8 +269,8 @@ type GameCreature struct {
 	Type  int
 }
 
-func NewGameCreature() GameCreature {
-	c := GameCreature{}
+func NewGameCreature() *GameCreature {
+	c := &GameCreature{}
 	fmt.Scan(&c.ID, &c.Color, &c.Type)
 	return c
 }
@@ -229,10 +279,12 @@ func main() {
 	game := NewGame()
 
 	game.LoadCreatures()
+	game.DebugCreatures()
 
 	for {
 		s := game.LoadState()
-		// s.DebugRadar()
+		s.DebugRadar()
+		s.DebugVisibleCreatures()
 
 		for i := range s.MyDrones {
 			drone := s.MyDrones[i]
@@ -246,10 +298,14 @@ func main() {
 				game.RemoveResurface(drone.ID)
 			}
 
-			if len(s.DroneScnas[drone.ID]) >= 2 {
+			newPoint, dist, cID := drone.FindNearCapture(game, s)
+
+			if len(s.DroneScnas[drone.ID]) >= 1 && drone.NeedSurface(int(dist)) {
+				game.AddResurface(drone.ID, Point{X: drone.X, Y: int(SurfaceDistance)})
+			} else if len(s.DroneScnas[drone.ID]) >= 6 {
 				game.AddResurface(drone.ID, Point{X: drone.X, Y: int(SurfaceDistance)})
 			}
-			newPoint, dist, cID := drone.FindNearCapture(game, s)
+
 			if !newPoint.IsZero() {
 				targetCaptureID, ok := game.DroneTarget[drone.ID]
 				if dist <= AutoScanDistance && targetCaptureID == cID && ok {
@@ -259,23 +315,13 @@ func main() {
 					game.TouchCreature(drone.ID, cID)
 				}
 				fmt.Fprintln(os.Stderr, drone.ID, "move to nearest")
-				drone.TurnLight()
+				drone.TurnLight(game)
 				drone.Move(newPoint)
 			} else {
 				var hasRadar bool
-				s.DebugRadar()
-				for _, r := range s.Radar {
-					if r.DroneID != drone.ID {
-						continue
-					}
-					if hasRadar {
-						break
-					}
-					var found bool
-					for _, cs := range game.CreaturesTouched {
-						_, found = cs[r.CreatureID]
-					}
-					if found {
+				s.DebugRadarByDroneID(drone.ID)
+				for _, r := range s.MapRadar[drone.ID] {
+					if game.IsTouchedCreature(r.CreatureID) {
 						continue
 					}
 					cID, ok := game.DroneTarget[drone.ID]
@@ -290,17 +336,23 @@ func main() {
 						hasRadar = true
 						continue
 					} else if r.DroneID == drone.ID && ok && r.CreatureID == cID {
-						drone.TurnLight()
+						drone.TurnLight(game)
 						drone.MoveToRadar(r.Radar)
 						fmt.Fprintln(os.Stderr, drone.ID, "target", cID)
 						hasRadar = true
 						continue
 					} else {
-						fmt.Fprintf(os.Stderr, "%v\n", game.DroneTarget)
+						if !s.CheckCreatureID(drone.ID, cID) {
+							game.RemoveDroneTarget(drone.ID)
+							fmt.Fprintf(os.Stderr, "%d missing %d clear target\n", drone.ID, r.CreatureID)
+
+						} else {
+							fmt.Fprintf(os.Stderr, "%d c %d target map %v\n", drone.ID, r.CreatureID, game.DroneTarget)
+						}
 					}
 				}
 				if !hasRadar {
-					drone.Wait()
+					drone.RandMove()
 				}
 			}
 		}
@@ -381,16 +433,47 @@ type State struct {
 
 	RadarBlipCount int
 	Radar          []Radar
-	MapRadar       map[int]Radar
+	MapRadar       map[int][]Radar
 }
 
 func (s *State) DebugRadar() {
+	fmt.Fprintf(os.Stderr, "got radar: ")
 	for _, r := range s.Radar {
-		fmt.Fprintf(os.Stderr, "%d %d %s\n", r.DroneID, r.CreatureID, r.Radar)
+		fmt.Fprintf(os.Stderr, "(%d %d %s),", r.DroneID, r.CreatureID, r.Radar)
 	}
+	fmt.Fprintln(os.Stderr)
 }
 
-func NewState() *State {
+func (s *State) DebugRadarByDroneID(droneID int) {
+	fmt.Fprintf(os.Stderr, "got radar %d: ", droneID)
+	for _, r := range s.MapRadar[droneID] {
+		fmt.Fprintf(os.Stderr, "(%d %s),", r.CreatureID, r.Radar)
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+func (s *State) DebugVisibleCreatures() {
+	fmt.Fprintf(os.Stderr, "Visible: ")
+	for _, c := range s.Creatures {
+		fmt.Fprintf(os.Stderr, "(%d %d %d %d %d),", c.ID, c.X, c.Y, c.Vx, c.Vy)
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+func (s *State) CheckCreatureID(droneID int, creatureID int) bool {
+	v, ok := s.MapRadar[droneID]
+	if !ok {
+		return ok
+	}
+	for _, r := range v {
+		if r.CreatureID == creatureID {
+			return true
+		}
+	}
+	return false
+}
+
+func NewState(g *GameState) *State {
 	s := &State{
 		MyCreatures:  make(map[int]struct{}, 0),
 		FoeCreatures: make([]int, 0),
@@ -399,7 +482,7 @@ func NewState() *State {
 		DroneScnas:   make(map[int]map[int]struct{}, 0),
 		Creatures:    make([]Creature, 0),
 		Radar:        make([]Radar, 0),
-		MapRadar:     make(map[int]Radar, 0),
+		MapRadar:     make(map[int][]Radar, 0),
 	}
 
 	fmt.Scan(&s.MyScore)
@@ -445,14 +528,29 @@ func NewState() *State {
 	for i := 0; i < s.VisibleCreatureCount; i++ {
 		s.Creatures = append(s.Creatures, NewCreature())
 	}
+	sort.SliceStable(s.Creatures, func(i, j int) bool {
+		ir := g.MapCreatures[s.Creatures[i].ID]
+		jr := g.MapCreatures[s.Creatures[j].ID]
+		return ir.Type < jr.Type
+	})
 
 	fmt.Scan(&s.RadarBlipCount)
 
 	for i := 0; i < s.RadarBlipCount; i++ {
 		r := NewRadar()
 		s.Radar = append(s.Radar, r)
-		s.MapRadar[r.DroneID] = r
+		if v, ok := s.MapRadar[r.DroneID]; !ok {
+			s.MapRadar[r.DroneID] = []Radar{r}
+		} else {
+			v = append(v, r)
+			s.MapRadar[r.DroneID] = v
+		}
 	}
+	sort.SliceStable(s.Radar, func(i, j int) bool {
+		ir := g.MapCreatures[s.Radar[i].CreatureID]
+		jr := g.MapCreatures[s.Radar[j].CreatureID]
+		return ir.Type < jr.Type
+	})
 
 	return s
 }

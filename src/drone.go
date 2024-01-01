@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"strings"
 )
@@ -25,6 +26,11 @@ func (d *Drone) IsSurfaced() bool {
 
 func (d *Drone) Distance(x, y int) float64 {
 	return math.Sqrt(math.Pow(float64(d.X-x), 2) + math.Pow(float64(d.Y-y), 2))
+}
+
+func (d *Drone) NeedSurface(nearestDist int) bool {
+	distanceSurface := d.Distance(d.X, SurfaceDistance)
+	return distanceSurface < float64(nearestDist)
 }
 
 func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cID int) {
@@ -67,7 +73,7 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 	return
 }
 
-func (d *Drone) TurnLight() {
+func (d *Drone) TurnLight(g *GameState) {
 	if d.Battery > LightBattary && d.Y > int(MaxPosistionY/2)-AutoScanDistance {
 		d.enabledLight = true
 	}
@@ -94,10 +100,29 @@ func (d *Drone) MoveToRadar(radar string, msg ...string) {
 	d.Move(p, msg...)
 }
 
+func (d *Drone) RandMove() {
+	x := rand.Intn(MaxRandStep-MinRandStep) + MinRandStep
+	y := rand.Intn(MaxRandStep-MinRandStep) + MinRandStep
+	d.Move(Point{X: d.X + x, Y: d.Y + y}, "random")
+}
+
 func (d *Drone) Move(p Point, msg ...string) {
 	if len(msg) == 0 {
 		msg = append(msg, fmt.Sprintf("p: %d %d to: %d %d", d.X, d.Y, p.X, p.Y))
 		fmt.Fprintf(os.Stderr, strings.Join(msg, " ")+"\n")
+	}
+	if p.X < 0 {
+		p.X = 0
+	}
+	if p.X > MaxPosistionX-AutoScanDistance+3 {
+		p.X = MaxPosistionX - AutoScanDistance + 3
+	}
+
+	if p.Y < 0 {
+		p.Y = 0
+	}
+	if p.Y > MaxPosistionY-AutoScanDistance+3 {
+		p.Y = MaxPosistionY - AutoScanDistance + 3
 	}
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
 }

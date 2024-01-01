@@ -9,10 +9,12 @@ func main() {
 	game := NewGame()
 
 	game.LoadCreatures()
+	game.DebugCreatures()
 
 	for {
 		s := game.LoadState()
-		// s.DebugRadar()
+		s.DebugRadar()
+		s.DebugVisibleCreatures()
 
 		for i := range s.MyDrones {
 			drone := s.MyDrones[i]
@@ -26,10 +28,14 @@ func main() {
 				game.RemoveResurface(drone.ID)
 			}
 
-			if len(s.DroneScnas[drone.ID]) >= 2 {
+			newPoint, dist, cID := drone.FindNearCapture(game, s)
+
+			if len(s.DroneScnas[drone.ID]) >= 1 && drone.NeedSurface(int(dist)) {
+				game.AddResurface(drone.ID, Point{X: drone.X, Y: int(SurfaceDistance)})
+			} else if len(s.DroneScnas[drone.ID]) >= 6 {
 				game.AddResurface(drone.ID, Point{X: drone.X, Y: int(SurfaceDistance)})
 			}
-			newPoint, dist, cID := drone.FindNearCapture(game, s)
+
 			if !newPoint.IsZero() {
 				targetCaptureID, ok := game.DroneTarget[drone.ID]
 				if dist <= AutoScanDistance && targetCaptureID == cID && ok {
@@ -39,23 +45,13 @@ func main() {
 					game.TouchCreature(drone.ID, cID)
 				}
 				fmt.Fprintln(os.Stderr, drone.ID, "move to nearest")
-				drone.TurnLight()
+				drone.TurnLight(game)
 				drone.Move(newPoint)
 			} else {
 				var hasRadar bool
-				s.DebugRadar()
-				for _, r := range s.Radar {
-					if r.DroneID != drone.ID {
-						continue
-					}
-					if hasRadar {
-						break
-					}
-					var found bool
-					for _, cs := range game.CreaturesTouched {
-						_, found = cs[r.CreatureID]
-					}
-					if found {
+				s.DebugRadarByDroneID(drone.ID)
+				for _, r := range s.MapRadar[drone.ID] {
+					if game.IsTouchedCreature(r.CreatureID) {
 						continue
 					}
 					cID, ok := game.DroneTarget[drone.ID]
@@ -70,17 +66,23 @@ func main() {
 						hasRadar = true
 						continue
 					} else if r.DroneID == drone.ID && ok && r.CreatureID == cID {
-						drone.TurnLight()
+						drone.TurnLight(game)
 						drone.MoveToRadar(r.Radar)
 						fmt.Fprintln(os.Stderr, drone.ID, "target", cID)
 						hasRadar = true
 						continue
 					} else {
-						fmt.Fprintf(os.Stderr, "%v\n", game.DroneTarget)
+						if !s.CheckCreatureID(drone.ID, cID) {
+							game.RemoveDroneTarget(drone.ID)
+							fmt.Fprintf(os.Stderr, "%d missing %d clear target\n", drone.ID, r.CreatureID)
+
+						} else {
+							fmt.Fprintf(os.Stderr, "%d c %d target map %v\n", drone.ID, r.CreatureID, game.DroneTarget)
+						}
 					}
 				}
 				if !hasRadar {
-					drone.Wait()
+					drone.RandMove()
 				}
 			}
 		}
