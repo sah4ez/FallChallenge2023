@@ -45,6 +45,8 @@ func main() {
 			drone.DebugRadarRadius()
 
 			newPoint := game.FirstCommand(drone)
+			m := drone.Solve(game, s, s.MapRadar[drone.ID], newPoint)
+			DebugLocation(m, drone.ID, newPoint)
 			if drone.DistanceToPoint(newPoint) < AutoScanDistance {
 				drone.TurnLight(game)
 				newPoint = game.PopCommand(drone)

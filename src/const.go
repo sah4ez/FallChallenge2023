@@ -2,7 +2,8 @@ package main
 
 const SurfaceDistance = 500.0
 const DroneSurfaceDistance = 499.0
-const AutoScanDistance = 799.0
+const AutoScanDistance = 800.0
+const StepScan = float64(150.0)
 const AutoScanMonsterDistance = 1099.0
 const MaxAutoScanDistance = 2000.0
 const ShiftByRadarDistance = 600

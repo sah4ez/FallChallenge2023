@@ -206,6 +206,67 @@ func (d *Drone) GetRadiusLight() float64 {
 	return radius
 }
 
+func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]Node {
+	startX := d.X - AutoScanDistance
+	if startX < 0 {
+		startX = 0
+	}
+	startY := d.Y - AutoScanDistance
+	if startY < 0 {
+		startY = 0
+	}
+	endX := d.X + AutoScanDistance
+	if endX >= MaxPosistionX {
+		endX = MaxPosistionX
+	}
+	endY := d.Y + AutoScanDistance
+	if endY >= MaxPosistionY {
+		endY = MaxPosistionY
+	}
+
+	location := make([][]Node, int(math.Floor(float64(endX-startX)/StepScan)))
+	i := 0
+	monsters := []Creature{}
+	for _, c := range s.Creatures {
+		gc := g.GetCreature(c.ID)
+		if gc.Type < 0 {
+			monsters = append(monsters, c)
+		}
+	}
+	fmt.Fprintln(os.Stderr, "monsters", len(monsters))
+	for x := startX; x < endX; x += int(StepScan) {
+		if i >= len(location) {
+			continue
+		}
+		location[i] = make([]Node, int(math.Floor(float64(endY-startY)/StepScan)))
+		j := 0
+		for y := startY; y < endY; y += int(StepScan) {
+			if j >= len(location[i]) {
+				continue
+			}
+			from := Point{X: x, Y: y}
+			score := 0
+			for _, m := range monsters {
+				if LocationDistance(from, m.Point()) <= AutoScanDistance {
+					score -= 1
+				}
+				if LocationDistance(from, m.NextPoint()) <= AutoScanDistance {
+					score -= 1
+				}
+			}
+			n := Node{
+				Point:    from,
+				Distance: int(LocationDistance(from, target)),
+				Score:    score,
+			}
+			location[i][j] = n
+			j++
+		}
+		i++
+	}
+	return location
+}
+
 func (d *Drone) SolveRadarRadius(g *GameState, radar []Radar) {
 	hashRadar := map[string][]*GameCreature{}
 	for _, r := range radar {
