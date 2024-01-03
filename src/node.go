@@ -8,6 +8,8 @@ import (
 
 type Node struct {
 	Point
+	I int
+	J int
 
 	CreaturesTypes []*GameCreature
 	Score          int
@@ -17,6 +19,7 @@ type Node struct {
 	Drone    *Drone
 	FoeDrone *Drone
 	Creature *Creature
+	Used     bool
 }
 
 func DebugLocation(location [][]Node, droneID int, target Point) {
@@ -27,6 +30,18 @@ func DebugLocation(location [][]Node, droneID int, target Point) {
 		}
 		fmt.Fprintln(os.Stderr)
 	}
+}
+
+func NearestNode(nodes []Node, pos Point) Node {
+	min := nodes[0]
+	minDist := LocationDistance(min.Point, pos)
+	for _, n := range nodes {
+		if newMinDist := LocationDistance(n.Point, pos); newMinDist < minDist {
+			minDist = newMinDist
+			min = n
+		}
+	}
+	return min
 }
 
 func LocationDistance(from Point, to Point) float64 {

@@ -24,10 +24,34 @@ func main() {
 		onceDrone.Do(func() {
 			for i := range s.MyDrones {
 				drone := s.MyDrones[i]
-				game.MoveDrone(drone, Point{X: drone.X, Y: 2500})
-				game.MoveDrone(drone, Point{X: drone.X, Y: 8500})
-				game.MoveDrone(drone, Point{X: int(MaxPosistionX / 2), Y: MaxPosistionY - int(AutoScanDistance)})
-				game.MoveDrone(drone, Point{X: int(MaxPosistionX / 2), Y: SurfaceDistance})
+				posX := drone.X
+				if drone.X < MaxPosistionX/2 {
+					posX = 2000
+				} else {
+					posX = 8000
+				}
+				// game.MoveDrone(drone, Point{X: drone.X, Y: 2500})
+				game.MoveDrone(drone, Point{X: posX, Y: 8500})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxPosistionY - int(AutoScanDistance)})
+				game.MoveDrone(drone, Point{X: posX, Y: 0})
+				game.MoveDrone(drone, Point{X: posX, Y: 8500})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxPosistionY - int(AutoScanDistance)})
+				game.MoveDrone(drone, Point{X: posX, Y: 0})
+				game.MoveDrone(drone, Point{X: posX, Y: 8500})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxPosistionY - int(AutoScanDistance)})
+				game.MoveDrone(drone, Point{X: posX, Y: 0})
+				game.MoveDrone(drone, Point{X: posX, Y: 8500})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxPosistionY - int(AutoScanDistance)})
+				game.MoveDrone(drone, Point{X: posX, Y: 0})
+				game.MoveDrone(drone, Point{X: posX, Y: 8500})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxPosistionY - int(AutoScanDistance)})
+				game.MoveDrone(drone, Point{X: posX, Y: 0})
+				game.MoveDrone(drone, Point{X: posX, Y: 8500})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxPosistionY - int(AutoScanDistance)})
+				game.MoveDrone(drone, Point{X: posX, Y: 0})
+				game.MoveDrone(drone, Point{X: posX, Y: 8500})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxPosistionY - int(AutoScanDistance)})
+				game.MoveDrone(drone, Point{X: posX, Y: 0})
 			}
 		})
 
@@ -39,20 +63,26 @@ func main() {
 				drone.Wait()
 				continue
 			}
+			for _, s := range s.Creatures {
+				gs := game.GetCreature(s.ID)
+				if gs.Type < 0 && drone.DistanceToPoint(s.Point()) < AutoScanDistance {
+					drone.NearMonster = true
+				}
+			}
 
 			drone.TurnLight(game)
 			drone.SolveRadarRadius(game, s.MapRadar[drone.ID])
 			drone.DebugRadarRadius()
 
 			newPoint := game.FirstCommand(drone)
-			m := drone.Solve(game, s, s.MapRadar[drone.ID], newPoint)
-			DebugLocation(m, drone.ID, newPoint)
-			if drone.DistanceToPoint(newPoint) < AutoScanDistance {
-				drone.TurnLight(game)
+			if drone.DistanceToPoint(newPoint) < SurfaceDistance {
 				newPoint = game.PopCommand(drone)
 			}
-			drone.TurnLight(game)
-			drone.Move(newPoint)
+			m := drone.Solve(game, s, s.MapRadar[drone.ID], newPoint)
+			DebugLocation(m, drone.ID, newPoint)
+
+			m = drone.MoveByLocation(m, nil)
+			DebugLocation(m, drone.ID, newPoint)
 		}
 	}
 }

@@ -17,7 +17,7 @@ func (c *Creature) Point() Point {
 }
 
 func (c *Creature) NextPoint() Point {
-	return Point{X: c.X + c.Vx, Y: c.Y + c.V.y}
+	return Point{X: c.X + c.Vx, Y: c.Y + c.Vy}
 }
 
 func NewCreature() Creature {

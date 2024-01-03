@@ -10,11 +10,12 @@ import (
 
 // MOVE <x> <y> <light (1|0)> | WAIT <light (1|0)>
 type Drone struct {
-	ID        int
-	X         int
-	Y         int
-	Emergency int
-	Battery   int
+	ID          int
+	X           int
+	Y           int
+	Emergency   int
+	Battery     int
+	NearMonster bool
 
 	enabledLight bool
 	scanned      map[int]struct{}
@@ -160,7 +161,7 @@ func (d *Drone) Position() Point {
 func (d *Drone) TurnLight(g *GameState) {
 	cnt := g.GetCoutLights(d)
 
-	if d.Battery > LightBattary && cnt > 0 {
+	if d.Battery >= LightBattary && cnt > 0 {
 		d.enabledLight = true
 	}
 	fmt.Fprintf(os.Stderr, "turn light: %d %d %d %v\n", d.ID, d.Battery, cnt, d.enabledLight)
@@ -200,9 +201,9 @@ func (d *Drone) RandMove() {
 
 func (d *Drone) GetRadiusLight() float64 {
 	radius := AutoScanDistance
-	if d.enabledLight {
-		radius = MaxAutoScanDistance
-	}
+	// if d.enabledLight {
+	// radius = MaxAutoScanDistance
+	// }
 	return radius
 }
 
@@ -246,15 +247,27 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]N
 			}
 			from := Point{X: x, Y: y}
 			score := 0
+			if !d.NearMonster {
+				nearest := NearestNode(d.radiusPoint, from)
+				for _, c := range nearest.CreaturesTypes {
+					if c.Type < 0 {
+						score -= 1
+					} else {
+						score += 1
+					}
+				}
+			}
 			for _, m := range monsters {
-				if LocationDistance(from, m.Point()) <= AutoScanDistance {
+				if LocationDistance(from, m.Point()) <= MonsterDistanceDetect {
 					score -= 1
 				}
-				if LocationDistance(from, m.NextPoint()) <= AutoScanDistance {
+				if LocationDistance(from, m.NextPoint()) <= MonsterDistanceDetect {
 					score -= 1
 				}
 			}
 			n := Node{
+				I:        i,
+				J:        j,
 				Point:    from,
 				Distance: int(LocationDistance(from, target)),
 				Score:    score,
@@ -337,6 +350,116 @@ func (d *Drone) Move(p Point, msg ...string) {
 		p.Y = MaxPosistionY - AutoScanDistance + 3
 	}
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
+}
+
+var moves = [][]int{
+	{1, -1}, {0, -1}, {-1, -1},
+	{1, 0}, {0, 0}, {-1, 0},
+	{1, 1}, {0, 1}, {-1, 1},
+}
+
+func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
+	if parent == nil {
+		i, j := 0, 0
+		if len(location)%2 == 0 {
+			i = len(location) / 2
+		} else {
+			i = len(location)/2 + 1
+		}
+		if len(location[i])%2 == 0 {
+			j = len(location[i]) / 2
+		} else {
+			j = len(location[i])/2 + 1
+		}
+		location[i][j].Used = true
+		location = d.MoveByLocation(location, &location[i][j])
+
+		fitNode := location[0][0]
+		scoreNodes := []Node{}
+		for i, nn := range location {
+			if i == 0 || i == len(location)-1 {
+				for _, n := range nn {
+					if n.Score == fitNode.Score {
+						scoreNodes = append(scoreNodes, n)
+					} else if n.Score > fitNode.Score {
+						fitNode = n
+						scoreNodes = []Node{n}
+					}
+				}
+			} else {
+				n := nn[0]
+				if n.Score == fitNode.Score {
+					scoreNodes = append(scoreNodes, n)
+				} else if n.Score > fitNode.Score {
+					fitNode = n
+					scoreNodes = []Node{n}
+				}
+				n = nn[len(nn)-1]
+				if n.Score == fitNode.Score {
+					scoreNodes = append(scoreNodes, n)
+				} else if n.Score > fitNode.Score {
+					fitNode = n
+					scoreNodes = []Node{n}
+				}
+			}
+		}
+		fitNode = scoreNodes[0]
+		for _, n := range scoreNodes {
+			if fitNode.Distance > n.Distance {
+				fitNode = n
+			}
+		}
+		fmt.Fprintf(os.Stderr, "%d MOVE %d %d %s\n", d.ID, fitNode.X, fitNode.Y, d.Light())
+		fmt.Printf("MOVE %d %d %s\n", fitNode.X, fitNode.Y, d.Light())
+		return location
+	}
+
+	i, j := parent.I, parent.J
+	var touched bool
+	for _, move := range moves {
+		i = parent.I + move[0]
+		if i < 0 {
+			i = 0
+		}
+		if i >= len(location) {
+			i = len(location) - 1
+		}
+		j = parent.J + move[1]
+		if j < 0 {
+			j = 0
+		}
+		if j >= len(location[i]) {
+			j = len(location[i]) - 1
+		}
+		if location[i][j].Used {
+			continue
+		}
+		location[i][j].Used = true
+		location[i][j].Score += parent.Score
+		touched = true
+	}
+	if !touched {
+		return location
+	}
+
+	for _, move := range moves {
+		i = parent.I + move[0]
+		if i < 0 {
+			i = 0
+		}
+		if i >= len(location) {
+			i = len(location) - 1
+		}
+		j = parent.J + move[1]
+		if j < 0 {
+			j = 0
+		}
+		if j >= len(location[i]) {
+			j = len(location[i]) - 1
+		}
+		location = d.MoveByLocation(location, &location[i][j])
+	}
+	return location
 }
 
 func (d *Drone) DetectMode() string {
