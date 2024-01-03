@@ -107,12 +107,15 @@ func NewState(g *GameState) *State {
 
 	fmt.Scan(&s.MyDroneCount)
 	for i := 0; i < s.MyDroneCount; i++ {
-		s.MyDrones = append(s.MyDrones, NewDrone())
+		d := NewDrone()
+		s.MyDrones = append(s.MyDrones, d)
+		g.AddDroneCounts(d.ID)
 	}
 
 	fmt.Scan(&s.FoeDroneCount)
 	for i := 0; i < s.FoeDroneCount; i++ {
-		s.FoeDrones = append(s.FoeDrones, NewDrone())
+		d := NewDrone()
+		s.FoeDrones = append(s.FoeDrones, d)
 	}
 
 	fmt.Scan(&s.DroneScanCount)
@@ -129,7 +132,8 @@ func NewState(g *GameState) *State {
 	fmt.Scan(&s.VisibleCreatureCount)
 
 	for i := 0; i < s.VisibleCreatureCount; i++ {
-		s.Creatures = append(s.Creatures, NewCreature())
+		c := NewCreature()
+		s.Creatures = append(s.Creatures, c)
 	}
 	sort.SliceStable(s.Creatures, func(i, j int) bool {
 		ir := g.MapCreatures[s.Creatures[i].ID]

@@ -18,6 +18,8 @@ type GameState struct {
 
 	MapDroneLigthCount map[string]map[int]int
 
+	DroneQueue map[int][]Point
+
 	Tick   int
 	States map[int]*State
 }
@@ -91,6 +93,15 @@ func (g *GameState) GetCreature(creatureID int) *GameCreature {
 	return nil
 }
 
+func (g *State) GetCreaturePosition(creatureID int) *Creature {
+	for _, v := range g.Creatures {
+		if v.ID == creatureID {
+			return &v
+		}
+	}
+	return nil
+}
+
 func (g *GameState) DebugCreatures() {
 	fmt.Fprintf(os.Stderr, "got creatrues:")
 	for _, c := range g.Creatures {
@@ -103,10 +114,12 @@ func (g *GameState) GetCoutLights(drone *Drone) int {
 	state := drone.DetectMode()
 	st, ok := g.MapDroneLigthCount[state]
 	if !ok {
+		fmt.Fprintln(os.Stderr, "count lignts 1", drone.ID, state)
 		return 0
 	}
 	cnt, ok := st[drone.ID]
 	if !ok {
+		fmt.Fprintln(os.Stderr, "count lignts 2", drone.ID, state)
 		return 0
 	}
 	defer func() {
@@ -115,6 +128,79 @@ func (g *GameState) GetCoutLights(drone *Drone) int {
 		}
 	}()
 	return cnt
+}
+
+func (g *GameState) AddDroneCounts(droneID int) {
+	if v, ok := g.MapDroneLigthCount[ModeType0]; ok {
+		if _, ok := v[droneID]; !ok {
+			v[droneID] = 0
+		}
+		g.MapDroneLigthCount[ModeType0] = v
+	}
+	if v, ok := g.MapDroneLigthCount[ModeType1]; ok {
+		if _, ok := v[droneID]; !ok {
+			v[droneID] = 3
+		}
+		g.MapDroneLigthCount[ModeType1] = v
+	}
+	if v, ok := g.MapDroneLigthCount[ModeType2]; ok {
+		if _, ok := v[droneID]; !ok {
+			v[droneID] = 6
+		}
+		g.MapDroneLigthCount[ModeType2] = v
+	}
+	if v, ok := g.MapDroneLigthCount[ModeType3]; ok {
+		if _, ok := v[droneID]; !ok {
+			v[droneID] = 9
+		}
+		g.MapDroneLigthCount[ModeType3] = v
+	}
+}
+
+func (g *GameState) DebugLightCoutns() {
+	fmt.Fprintf(os.Stderr, "init light counts")
+	for k, v := range g.MapDroneLigthCount {
+		fmt.Fprintf(os.Stderr, "%s: ", k)
+		for kk, vv := range v {
+			fmt.Fprintf(os.Stderr, "%d %d|", kk, vv)
+		}
+		fmt.Fprintln(os.Stderr)
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+func (g *GameState) MoveDrone(drone Drone, p Point) {
+	if v, ok := g.DroneQueue[drone.ID]; !ok {
+		g.DroneQueue[drone.ID] = []Point{p}
+		return
+	} else {
+		v = append(v, p)
+		g.DroneQueue[drone.ID] = v
+	}
+}
+
+func (g *GameState) FirstCommand(drone Drone) (p Point) {
+	v, ok := g.DroneQueue[drone.ID]
+	if !ok {
+		return
+	}
+	if len(v) == 0 {
+		return
+	}
+	return v[0]
+}
+
+func (g *GameState) PopCommand(drone Drone) (p Point) {
+	v, ok := g.DroneQueue[drone.ID]
+	if !ok {
+		return
+	}
+	if len(v) <= 1 {
+		g.DroneQueue[drone.ID] = v[:0]
+		return
+	}
+	g.DroneQueue[drone.ID] = v[1:]
+	return v[0]
 }
 
 func NewGame() *GameState {
@@ -127,22 +213,11 @@ func NewGame() *GameState {
 		TargetCreatures:  make(map[int]struct{}, 0),
 		CreaturesTouched: make(map[int]map[int]struct{}, 0),
 		MapDroneLigthCount: map[string]map[int]int{
-			ModeType0: map[int]int{
-				0: 0,
-				1: 0,
-			},
-			ModeType1: map[int]int{
-				0: 1,
-				1: 1,
-			},
-			ModeType2: map[int]int{
-				0: 2,
-				1: 2,
-			},
-			ModeType3: map[int]int{
-				0: 3,
-				1: 3,
-			},
+			ModeType0: map[int]int{},
+			ModeType1: map[int]int{},
+			ModeType2: map[int]int{},
+			ModeType3: map[int]int{},
 		},
+		DroneQueue: make(map[int][]Point, 0),
 	}
 }

@@ -7,11 +7,13 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const SurfaceDistance = 500.0
 const DroneSurfaceDistance = 499.0
 const AutoScanDistance = 799.0
+const AutoScanMonsterDistance = 1099.0
 const MaxAutoScanDistance = 2000.0
 const ShiftByRadarDistance = 600
 const MaxPosistionX = 9999
@@ -25,6 +27,11 @@ const ModeType0 = "0-2500"
 const ModeType1 = "2500-5000"
 const ModeType2 = "5000-7500"
 const ModeType3 = "7500-10000"
+const AngleRadar = 90
+const RadarTL = "TL"
+const RadarTR = "TR"
+const RadarBL = "BL"
+const RadarBR = "BR"
 
 type Creature struct {
 	ID int
@@ -50,6 +57,8 @@ type Drone struct {
 
 	enabledLight bool
 	scanned      map[int]struct{}
+	radiusPoint  []Node
+	nextPoint    Point
 }
 
 func (d *Drone) IsEmergency() bool {
@@ -62,6 +71,10 @@ func (d *Drone) IsSurfaced() bool {
 
 func (d *Drone) Distance(x, y int) float64 {
 	return math.Sqrt(math.Pow(float64(d.X-x), 2) + math.Pow(float64(d.Y-y), 2))
+}
+
+func (d *Drone) DistanceToPoint(p Point) float64 {
+	return math.Sqrt(math.Pow(float64(d.X-p.X), 2) + math.Pow(float64(d.Y-p.Y), 2))
 }
 
 func (d *Drone) NeedSurface(nearestDist int) bool {
@@ -109,11 +122,87 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 	return
 }
 
+func (d *Drone) FindNearCaptureByRadar(g *GameState, s *State) (p Point, dd float64, cID int) {
+	hashCreatres := map[int]struct{}{}
+	p = Point{X: d.Y, Y: d.Y}
+	exists := map[int]struct{}{}
+	for _, r := range s.Radar {
+		exists[r.CreatureID] = struct{}{}
+	}
+
+	monsters := []Point{}
+	for _, v := range s.Creatures {
+		c := g.GetCreature(v.ID)
+		dist := d.Distance(v.X, v.Y)
+		if c.Type < 0 && dist < AutoScanMonsterDistance {
+			monsters = append(monsters, Point{X: v.X, Y: v.Y})
+			fmt.Fprintf(os.Stderr, "visible near %d %d %d\n", d.ID, c.ID, c.Type)
+			// p.X = d.X + v.Vx*10
+			// p.Y = d.Y + v.Vy*10
+		}
+	}
+	if len(monsters) > 0 {
+		vectors := []Vector{}
+		for _, m := range monsters {
+			vectors = append(vectors, *NewVector(d.Position(), m))
+		}
+		v := Vector{}
+		for _, vv := range vectors {
+			v.X = v.X + vv.X
+			v.Y = v.Y + vv.Y
+		}
+		v.X = int(v.X / len(vectors))
+		v.Y = int(v.Y / len(vectors))
+		p = Point{X: d.X - v.X, Y: d.Y - v.Y}
+		return p, d.Distance(p.Y, p.Y), 0
+	}
+
+	for _, n := range d.radiusPoint {
+		for _, c := range n.CreaturesTypes {
+			if _, ok := exists[c.ID]; !ok {
+				continue
+			}
+			if _, ok := hashCreatres[c.ID]; ok {
+				// skip already touched
+				continue
+			}
+			if _, ok := s.MyCreatures[c.ID]; ok {
+				// skip scanned creature
+				continue
+			}
+			var found bool
+			for _, v := range s.DroneScnas {
+				for k := range v {
+					if c.ID == k {
+						hashCreatres[k] = struct{}{}
+						found = true
+					}
+				}
+			}
+			if found {
+				continue
+			}
+			hashCreatres[c.ID] = struct{}{}
+			dx, dy := RadarToDirection(n.Radar)
+			p.X = p.X + dx*n.X
+			p.Y = p.Y + dy*n.Y
+		}
+	}
+
+	return p, d.Distance(p.Y, p.Y), 0
+}
+
+func (d *Drone) Position() Point {
+	return Point{X: d.X, Y: d.Y}
+}
+
 func (d *Drone) TurnLight(g *GameState) {
 	cnt := g.GetCoutLights(d)
+
 	if d.Battery > LightBattary && cnt > 0 {
 		d.enabledLight = true
 	}
+	fmt.Fprintf(os.Stderr, "turn light: %d %d %d %v\n", d.ID, d.Battery, cnt, d.enabledLight)
 }
 
 func (d *Drone) Light() string {
@@ -146,6 +235,65 @@ func (d *Drone) RandMove() {
 	x := rand.Intn(MaxRandStep-MinRandStep) + MinRandStep
 	y := rand.Intn(MaxRandStep-MinRandStep) + MinRandStep
 	d.Move(Point{X: d.X + x, Y: d.Y + y}, "random")
+}
+
+func (d *Drone) GetRadiusLight() float64 {
+	radius := AutoScanDistance
+	if d.enabledLight {
+		radius = MaxAutoScanDistance
+	}
+	return radius
+}
+
+func (d *Drone) SolveRadarRadius(g *GameState, radar []Radar) {
+	hashRadar := map[string][]*GameCreature{}
+	for _, r := range radar {
+		if v, ok := hashRadar[r.Radar]; !ok {
+			c := g.GetCreature(r.CreatureID)
+			if c == nil {
+				continue
+			}
+			hashRadar[r.Radar] = []*GameCreature{c}
+		} else {
+			c := g.GetCreature(r.CreatureID)
+			if c == nil {
+				continue
+			}
+			v = append(v, c)
+			hashRadar[r.Radar] = v
+		}
+	}
+
+	radius := d.GetRadiusLight()
+	for tetha := 45; tetha < 360; tetha += AngleRadar {
+		radarName := AngelToRadar(tetha)
+
+		xt := math.Cos(float64(tetha)) * radius
+		yt := math.Sin(float64(tetha)) * radius
+		ct := []*GameCreature{}
+		ct = append(ct, hashRadar[radarName]...)
+		d.radiusPoint = append(d.radiusPoint, Node{
+			Point: Point{
+				X: d.X + int(xt),
+				Y: d.Y + int(yt),
+			},
+			CreaturesTypes: ct,
+			Radar:          radarName,
+		})
+	}
+}
+
+func (d *Drone) DebugRadarRadius() {
+	radius := d.GetRadiusLight()
+	fmt.Fprintf(os.Stderr, ">1%d(%d,%d):", d.ID, d.X, d.Y)
+	for _, p := range d.radiusPoint {
+		types := []int{}
+		for _, g := range p.CreaturesTypes {
+			types = append(types, g.Type)
+		}
+		fmt.Fprintf(os.Stderr, "(%s,%d,%d,%v),", p.Radar, p.X, p.Y, types)
+	}
+	fmt.Fprintf(os.Stderr, "%f\n", radius)
 }
 
 func (d *Drone) Move(p Point, msg ...string) {
@@ -186,9 +334,11 @@ func (d *Drone) Debug() {
 }
 
 func NewDrone() Drone {
-	d := Drone{}
+	d := Drone{
+		radiusPoint: make([]Node, 0),
+	}
 	fmt.Scan(&d.ID, &d.X, &d.Y, &d.Emergency, &d.Battery)
-	fmt.Fprintln(os.Stderr, "scan drone", d.ID, d.X, d.Y, d.Emergency, d.Battery)
+	// fmt.Fprintln(os.Stderr, "scan drone", d.ID, d.X, d.Y, d.Emergency, d.Battery)
 	return d
 }
 
@@ -204,6 +354,8 @@ type GameState struct {
 	CreaturesTouched map[int]map[int]struct{}
 
 	MapDroneLigthCount map[string]map[int]int
+
+	DroneQueue map[int][]Point
 
 	Tick   int
 	States map[int]*State
@@ -278,6 +430,15 @@ func (g *GameState) GetCreature(creatureID int) *GameCreature {
 	return nil
 }
 
+func (g *State) GetCreaturePosition(creatureID int) *Creature {
+	for _, v := range g.Creatures {
+		if v.ID == creatureID {
+			return &v
+		}
+	}
+	return nil
+}
+
 func (g *GameState) DebugCreatures() {
 	fmt.Fprintf(os.Stderr, "got creatrues:")
 	for _, c := range g.Creatures {
@@ -290,10 +451,12 @@ func (g *GameState) GetCoutLights(drone *Drone) int {
 	state := drone.DetectMode()
 	st, ok := g.MapDroneLigthCount[state]
 	if !ok {
+		fmt.Fprintln(os.Stderr, "count lignts 1", drone.ID, state)
 		return 0
 	}
 	cnt, ok := st[drone.ID]
 	if !ok {
+		fmt.Fprintln(os.Stderr, "count lignts 2", drone.ID, state)
 		return 0
 	}
 	defer func() {
@@ -302,6 +465,79 @@ func (g *GameState) GetCoutLights(drone *Drone) int {
 		}
 	}()
 	return cnt
+}
+
+func (g *GameState) AddDroneCounts(droneID int) {
+	if v, ok := g.MapDroneLigthCount[ModeType0]; ok {
+		if _, ok := v[droneID]; !ok {
+			v[droneID] = 0
+		}
+		g.MapDroneLigthCount[ModeType0] = v
+	}
+	if v, ok := g.MapDroneLigthCount[ModeType1]; ok {
+		if _, ok := v[droneID]; !ok {
+			v[droneID] = 3
+		}
+		g.MapDroneLigthCount[ModeType1] = v
+	}
+	if v, ok := g.MapDroneLigthCount[ModeType2]; ok {
+		if _, ok := v[droneID]; !ok {
+			v[droneID] = 6
+		}
+		g.MapDroneLigthCount[ModeType2] = v
+	}
+	if v, ok := g.MapDroneLigthCount[ModeType3]; ok {
+		if _, ok := v[droneID]; !ok {
+			v[droneID] = 9
+		}
+		g.MapDroneLigthCount[ModeType3] = v
+	}
+}
+
+func (g *GameState) DebugLightCoutns() {
+	fmt.Fprintf(os.Stderr, "init light counts")
+	for k, v := range g.MapDroneLigthCount {
+		fmt.Fprintf(os.Stderr, "%s: ", k)
+		for kk, vv := range v {
+			fmt.Fprintf(os.Stderr, "%d %d|", kk, vv)
+		}
+		fmt.Fprintln(os.Stderr)
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+func (g *GameState) MoveDrone(drone Drone, p Point) {
+	if v, ok := g.DroneQueue[drone.ID]; !ok {
+		g.DroneQueue[drone.ID] = []Point{p}
+		return
+	} else {
+		v = append(v, p)
+		g.DroneQueue[drone.ID] = v
+	}
+}
+
+func (g *GameState) FirstCommand(drone Drone) (p Point) {
+	v, ok := g.DroneQueue[drone.ID]
+	if !ok {
+		return
+	}
+	if len(v) == 0 {
+		return
+	}
+	return v[0]
+}
+
+func (g *GameState) PopCommand(drone Drone) (p Point) {
+	v, ok := g.DroneQueue[drone.ID]
+	if !ok {
+		return
+	}
+	if len(v) <= 1 {
+		g.DroneQueue[drone.ID] = v[:0]
+		return
+	}
+	g.DroneQueue[drone.ID] = v[1:]
+	return v[0]
 }
 
 func NewGame() *GameState {
@@ -314,23 +550,12 @@ func NewGame() *GameState {
 		TargetCreatures:  make(map[int]struct{}, 0),
 		CreaturesTouched: make(map[int]map[int]struct{}, 0),
 		MapDroneLigthCount: map[string]map[int]int{
-			ModeType0: map[int]int{
-				0: 0,
-				1: 0,
-			},
-			ModeType1: map[int]int{
-				0: 1,
-				1: 1,
-			},
-			ModeType2: map[int]int{
-				0: 2,
-				1: 2,
-			},
-			ModeType3: map[int]int{
-				0: 3,
-				1: 3,
-			},
+			ModeType0: map[int]int{},
+			ModeType1: map[int]int{},
+			ModeType2: map[int]int{},
+			ModeType3: map[int]int{},
 		},
+		DroneQueue: make(map[int][]Point, 0),
 	}
 }
 
@@ -359,10 +584,24 @@ func main() {
 	game.LoadCreatures()
 	game.DebugCreatures()
 
+	var once sync.Once
+	var onceDrone sync.Once
+
 	for {
 		s := game.LoadState()
-		s.DebugRadar()
+		// s.DebugRadar()
 		s.DebugVisibleCreatures()
+
+		once.Do(game.DebugLightCoutns)
+		onceDrone.Do(func() {
+			for i := range s.MyDrones {
+				drone := s.MyDrones[i]
+				game.MoveDrone(drone, Point{X: drone.X, Y: 2500})
+				game.MoveDrone(drone, Point{X: drone.X, Y: 8500})
+				game.MoveDrone(drone, Point{X: int(MaxPosistionX / 2), Y: MaxPosistionY - int(AutoScanDistance)})
+				game.MoveDrone(drone, Point{X: int(MaxPosistionX / 2), Y: SurfaceDistance})
+			}
+		})
 
 		for i := range s.MyDrones {
 			drone := s.MyDrones[i]
@@ -373,86 +612,31 @@ func main() {
 				continue
 			}
 
-			if p, ok := game.Resurface[drone.ID]; ok {
-				if !drone.IsSurfaced() {
-					drone.Move(p)
-					fmt.Fprintln(os.Stderr, drone.ID, "surfaced", drone.X, drone.Y)
-					continue
-				}
-				game.RemoveResurface(drone.ID)
-			}
+			drone.TurnLight(game)
+			drone.SolveRadarRadius(game, s.MapRadar[drone.ID])
+			drone.DebugRadarRadius()
 
-			newPoint, dist, cID := drone.FindNearCapture(game, s)
-
-			if len(s.DroneScnas[drone.ID]) >= 1 && drone.NeedSurface(int(dist)) {
-				game.AddResurface(drone.ID, Point{X: drone.X, Y: int(SurfaceDistance)})
-			} else if len(s.DroneScnas[drone.ID]) >= 2 {
-				game.AddResurface(drone.ID, Point{X: drone.X, Y: int(SurfaceDistance)})
-			}
-
-			if !newPoint.IsZero() {
-				targetCaptureID, ok := game.DroneTarget[drone.ID]
-				if dist <= AutoScanDistance && targetCaptureID == cID && ok {
-					game.RemoveDroneTarget(drone)
-				}
-				if dist <= AutoScanDistance {
-					game.TouchCreature(drone.ID, cID)
-				}
-				fmt.Fprintln(os.Stderr, drone.ID, "move to nearest")
+			newPoint := game.FirstCommand(drone)
+			if drone.DistanceToPoint(newPoint) < AutoScanDistance {
 				drone.TurnLight(game)
-				drone.Move(newPoint)
-			} else {
-				var hasRadar bool
-				s.DebugRadarByDroneID(drone.ID)
-				for _, r := range s.MapRadar[drone.ID] {
-					if game.IsTouchedCreature(r.CreatureID) {
-						continue
-					}
-					cID, ok := game.DroneTarget[drone.ID]
-					creature := game.GetCreature(cID)
-					if cID > 0 && creature == nil {
-						fmt.Fprintln(os.Stderr, "craeture empty", cID)
-						continue
-					}
-					if creature != nil && creature.IsMonster() {
-						switch drone.DetectMode() {
-						case ModeType1, ModeType2, ModeType3:
-							fmt.Fprintln(os.Stderr, "detect monster", cID)
-							continue
-						}
-					}
-					if r.DroneID == drone.ID && !ok && !creature.IsMonster() {
-						if added := game.AddDroneTarget(drone.ID, r.CreatureID); !added {
-							fmt.Fprintln(os.Stderr, "not added target", len(game.TargetCreatures))
-							continue
-						}
-
-						drone.MoveToRadar(r.Radar)
-						fmt.Fprintln(os.Stderr, drone.ID, "no target")
-						hasRadar = true
-						continue
-					} else if r.DroneID == drone.ID && ok && r.CreatureID == cID && !creature.IsMonster() {
-						drone.TurnLight(game)
-						drone.MoveToRadar(r.Radar)
-						fmt.Fprintln(os.Stderr, drone.ID, "target", cID)
-						hasRadar = true
-						continue
-					} else {
-						if !s.CheckCreatureID(drone.ID, cID) {
-							game.RemoveDroneTarget(drone)
-							fmt.Fprintf(os.Stderr, "%d missing %d clear target\n", drone.ID, r.CreatureID)
-
-						} else {
-							fmt.Fprintf(os.Stderr, "%d c %d target map %v\n", drone.ID, r.CreatureID, game.DroneTarget)
-						}
-					}
-				}
-				if !hasRadar {
-					drone.RandMove()
-				}
+				newPoint = game.PopCommand(drone)
 			}
+			drone.TurnLight(game)
+			drone.Move(newPoint)
 		}
 	}
+}
+
+type Node struct {
+	Point
+
+	CreaturesTypes []*GameCreature
+	Score          int
+	Radar          string
+
+	Drone    *Drone
+	FoeDrone *Drone
+	Creature *Creature
 }
 
 type Point struct {
@@ -522,6 +706,31 @@ type Radar struct {
 	DroneID    int
 	CreatureID int
 	Radar      string
+}
+
+func AngelToRadar(angle int) string {
+	if angle <= 90 {
+		return RadarTR
+	} else if angle <= 180 {
+		return RadarTL
+	} else if angle <= 270 {
+		return RadarBL
+	} else {
+		return RadarBR
+	}
+}
+
+func RadarToDirection(radar string) (x int, y int) {
+	switch radar {
+	case RadarTL:
+		return -1, -1
+	case RadarTR:
+		return 1, -1
+	case RadarBR:
+		return 1, 1
+	default:
+		return -1, 1
+	}
 }
 
 func NewRadar() Radar {
@@ -631,12 +840,15 @@ func NewState(g *GameState) *State {
 
 	fmt.Scan(&s.MyDroneCount)
 	for i := 0; i < s.MyDroneCount; i++ {
-		s.MyDrones = append(s.MyDrones, NewDrone())
+		d := NewDrone()
+		s.MyDrones = append(s.MyDrones, d)
+		g.AddDroneCounts(d.ID)
 	}
 
 	fmt.Scan(&s.FoeDroneCount)
 	for i := 0; i < s.FoeDroneCount; i++ {
-		s.FoeDrones = append(s.FoeDrones, NewDrone())
+		d := NewDrone()
+		s.FoeDrones = append(s.FoeDrones, d)
 	}
 
 	fmt.Scan(&s.DroneScanCount)
@@ -653,7 +865,8 @@ func NewState(g *GameState) *State {
 	fmt.Scan(&s.VisibleCreatureCount)
 
 	for i := 0; i < s.VisibleCreatureCount; i++ {
-		s.Creatures = append(s.Creatures, NewCreature())
+		c := NewCreature()
+		s.Creatures = append(s.Creatures, c)
 	}
 	sort.SliceStable(s.Creatures, func(i, j int) bool {
 		ir := g.MapCreatures[s.Creatures[i].ID]
@@ -680,4 +893,23 @@ func NewState(g *GameState) *State {
 	})
 
 	return s
+}
+
+type Vector struct {
+	X int
+	Y int
+}
+
+func NewVector(from Point, to Point) *Vector {
+	return &Vector{
+		X: to.X - from.X,
+		Y: to.Y - from.Y,
+	}
+}
+
+func (v *Vector) Add(to Vector) Vector {
+	return Vector{
+		X: v.X + to.X,
+		Y: v.Y + to.Y,
+	}
 }

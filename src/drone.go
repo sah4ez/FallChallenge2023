@@ -18,6 +18,8 @@ type Drone struct {
 
 	enabledLight bool
 	scanned      map[int]struct{}
+	radiusPoint  []Node
+	nextPoint    Point
 }
 
 func (d *Drone) IsEmergency() bool {
@@ -30,6 +32,10 @@ func (d *Drone) IsSurfaced() bool {
 
 func (d *Drone) Distance(x, y int) float64 {
 	return math.Sqrt(math.Pow(float64(d.X-x), 2) + math.Pow(float64(d.Y-y), 2))
+}
+
+func (d *Drone) DistanceToPoint(p Point) float64 {
+	return math.Sqrt(math.Pow(float64(d.X-p.X), 2) + math.Pow(float64(d.Y-p.Y), 2))
 }
 
 func (d *Drone) NeedSurface(nearestDist int) bool {
@@ -77,11 +83,87 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 	return
 }
 
+func (d *Drone) FindNearCaptureByRadar(g *GameState, s *State) (p Point, dd float64, cID int) {
+	hashCreatres := map[int]struct{}{}
+	p = Point{X: d.Y, Y: d.Y}
+	exists := map[int]struct{}{}
+	for _, r := range s.Radar {
+		exists[r.CreatureID] = struct{}{}
+	}
+
+	monsters := []Point{}
+	for _, v := range s.Creatures {
+		c := g.GetCreature(v.ID)
+		dist := d.Distance(v.X, v.Y)
+		if c.Type < 0 && dist < AutoScanMonsterDistance {
+			monsters = append(monsters, Point{X: v.X, Y: v.Y})
+			fmt.Fprintf(os.Stderr, "visible near %d %d %d\n", d.ID, c.ID, c.Type)
+			// p.X = d.X + v.Vx*10
+			// p.Y = d.Y + v.Vy*10
+		}
+	}
+	if len(monsters) > 0 {
+		vectors := []Vector{}
+		for _, m := range monsters {
+			vectors = append(vectors, *NewVector(d.Position(), m))
+		}
+		v := Vector{}
+		for _, vv := range vectors {
+			v.X = v.X + vv.X
+			v.Y = v.Y + vv.Y
+		}
+		v.X = int(v.X / len(vectors))
+		v.Y = int(v.Y / len(vectors))
+		p = Point{X: d.X - v.X, Y: d.Y - v.Y}
+		return p, d.Distance(p.Y, p.Y), 0
+	}
+
+	for _, n := range d.radiusPoint {
+		for _, c := range n.CreaturesTypes {
+			if _, ok := exists[c.ID]; !ok {
+				continue
+			}
+			if _, ok := hashCreatres[c.ID]; ok {
+				// skip already touched
+				continue
+			}
+			if _, ok := s.MyCreatures[c.ID]; ok {
+				// skip scanned creature
+				continue
+			}
+			var found bool
+			for _, v := range s.DroneScnas {
+				for k := range v {
+					if c.ID == k {
+						hashCreatres[k] = struct{}{}
+						found = true
+					}
+				}
+			}
+			if found {
+				continue
+			}
+			hashCreatres[c.ID] = struct{}{}
+			dx, dy := RadarToDirection(n.Radar)
+			p.X = p.X + dx*n.X
+			p.Y = p.Y + dy*n.Y
+		}
+	}
+
+	return p, d.Distance(p.Y, p.Y), 0
+}
+
+func (d *Drone) Position() Point {
+	return Point{X: d.X, Y: d.Y}
+}
+
 func (d *Drone) TurnLight(g *GameState) {
 	cnt := g.GetCoutLights(d)
+
 	if d.Battery > LightBattary && cnt > 0 {
 		d.enabledLight = true
 	}
+	fmt.Fprintf(os.Stderr, "turn light: %d %d %d %v\n", d.ID, d.Battery, cnt, d.enabledLight)
 }
 
 func (d *Drone) Light() string {
@@ -114,6 +196,65 @@ func (d *Drone) RandMove() {
 	x := rand.Intn(MaxRandStep-MinRandStep) + MinRandStep
 	y := rand.Intn(MaxRandStep-MinRandStep) + MinRandStep
 	d.Move(Point{X: d.X + x, Y: d.Y + y}, "random")
+}
+
+func (d *Drone) GetRadiusLight() float64 {
+	radius := AutoScanDistance
+	if d.enabledLight {
+		radius = MaxAutoScanDistance
+	}
+	return radius
+}
+
+func (d *Drone) SolveRadarRadius(g *GameState, radar []Radar) {
+	hashRadar := map[string][]*GameCreature{}
+	for _, r := range radar {
+		if v, ok := hashRadar[r.Radar]; !ok {
+			c := g.GetCreature(r.CreatureID)
+			if c == nil {
+				continue
+			}
+			hashRadar[r.Radar] = []*GameCreature{c}
+		} else {
+			c := g.GetCreature(r.CreatureID)
+			if c == nil {
+				continue
+			}
+			v = append(v, c)
+			hashRadar[r.Radar] = v
+		}
+	}
+
+	radius := d.GetRadiusLight()
+	for tetha := 45; tetha < 360; tetha += AngleRadar {
+		radarName := AngelToRadar(tetha)
+
+		xt := math.Cos(float64(tetha)) * radius
+		yt := math.Sin(float64(tetha)) * radius
+		ct := []*GameCreature{}
+		ct = append(ct, hashRadar[radarName]...)
+		d.radiusPoint = append(d.radiusPoint, Node{
+			Point: Point{
+				X: d.X + int(xt),
+				Y: d.Y + int(yt),
+			},
+			CreaturesTypes: ct,
+			Radar:          radarName,
+		})
+	}
+}
+
+func (d *Drone) DebugRadarRadius() {
+	radius := d.GetRadiusLight()
+	fmt.Fprintf(os.Stderr, ">1%d(%d,%d):", d.ID, d.X, d.Y)
+	for _, p := range d.radiusPoint {
+		types := []int{}
+		for _, g := range p.CreaturesTypes {
+			types = append(types, g.Type)
+		}
+		fmt.Fprintf(os.Stderr, "(%s,%d,%d,%v),", p.Radar, p.X, p.Y, types)
+	}
+	fmt.Fprintf(os.Stderr, "%f\n", radius)
 }
 
 func (d *Drone) Move(p Point, msg ...string) {
@@ -154,8 +295,10 @@ func (d *Drone) Debug() {
 }
 
 func NewDrone() Drone {
-	d := Drone{}
+	d := Drone{
+		radiusPoint: make([]Node, 0),
+	}
 	fmt.Scan(&d.ID, &d.X, &d.Y, &d.Emergency, &d.Battery)
-	fmt.Fprintln(os.Stderr, "scan drone", d.ID, d.X, d.Y, d.Emergency, d.Battery)
+	// fmt.Fprintln(os.Stderr, "scan drone", d.ID, d.X, d.Y, d.Emergency, d.Battery)
 	return d
 }
