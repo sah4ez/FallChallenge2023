@@ -20,9 +20,14 @@ type Node struct {
 	FoeDrone *Drone
 	Creature *Creature
 	Used     bool
+	End      bool
 }
 
-func DebugLocation(location [][]Node, droneID int, target Point) {
+func (n *Node) StringID() string {
+	return fmt.Sprintf("%d:%d", n.X, n.Y)
+}
+
+func DebugLocation(location [][]*Node, droneID int, target Point) {
 	fmt.Fprintln(os.Stderr, "debug location", droneID, target)
 	for _, nn := range location {
 		for _, n := range nn {

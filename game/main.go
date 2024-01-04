@@ -256,7 +256,23 @@ func (d *Drone) GetRadiusLight() float64 {
 	return radius
 }
 
-func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]Node {
+func (d *Drone) SolveToGraph(g *GameState, s *State, location [][]*Node, target Point) *Vertex {
+	i, j := 0, 0
+	if len(location)%2 == 0 {
+		i = len(location) / 2
+	} else {
+		i = len(location)/2 + 1
+	}
+	if len(location[i])%2 == 0 {
+		j = len(location[i]) / 2
+	} else {
+		j = len(location[i])/2 + 1
+	}
+
+	return NewGraph(i, j, location, nil)
+}
+
+func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*Node {
 	startX := d.X - AutoScanDistance
 	if startX < 0 {
 		startX = 0
@@ -274,7 +290,7 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]N
 		endY = MaxPosistionY
 	}
 
-	location := make([][]Node, int(math.Floor(float64(endX-startX)/StepScan)))
+	location := make([][]*Node, int(math.Floor(float64(endX-startX)/StepScan)))
 	i := 0
 	monsters := []Creature{}
 	for _, c := range s.Creatures {
@@ -288,7 +304,7 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]N
 		if i >= len(location) {
 			continue
 		}
-		location[i] = make([]Node, int(math.Floor(float64(endY-startY)/StepScan)))
+		location[i] = make([]*Node, int(math.Floor(float64(endY-startY)/StepScan)))
 		j := 0
 		for y := startY; y < endY; y += int(StepScan) {
 			if j >= len(location[i]) {
@@ -296,14 +312,15 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]N
 			}
 			from := Point{X: x, Y: y}
 			score := 0
-			if !d.NearMonster {
+			if !d.NearMonster && false {
 				nearest := NearestNode(d.radiusPoint, from)
 				for _, c := range nearest.CreaturesTypes {
 					if c.Type < 0 {
 						score -= 1
-					} else {
-						score += 1
 					}
+					// else {
+					// score += 1
+					// }
 				}
 			}
 			for _, m := range monsters {
@@ -314,12 +331,18 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]N
 					score -= 1
 				}
 			}
-			n := Node{
+			n := &Node{
 				I:        i,
 				J:        j,
 				Point:    from,
 				Distance: int(LocationDistance(from, target)),
 				Score:    score,
+			}
+			if i == 0 || j == 0 {
+				n.End = true
+			}
+			if i == len(location)-1 || j == len(location[i])-1 {
+				n.End = true
 			}
 			location[i][j] = n
 			j++
@@ -399,12 +422,6 @@ func (d *Drone) Move(p Point, msg ...string) {
 		p.Y = MaxPosistionY - AutoScanDistance + 3
 	}
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
-}
-
-var moves = [][]int{
-	{1, -1}, {0, -1}, {-1, -1},
-	{1, 0}, {0, 0}, {-1, 0},
-	{1, 1}, {0, 1}, {-1, 1},
 }
 
 func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
@@ -509,6 +526,35 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 		location = d.MoveByLocation(location, &location[i][j])
 	}
 	return location
+}
+
+func (d *Drone) MoveByVertex(start *Vertex) {
+	scoreVertex := make([]*Vertex, 0)
+	BFS(start, func(v *Vertex) {
+		if v.Node.End {
+			scoreVertex = append(scoreVertex, v)
+		}
+	})
+	maxScore := scoreVertex[0].Node.Score
+	distScore := []*Node{scoreVertex[0].Node}
+	for _, v := range scoreVertex {
+		if maxScore < v.Node.Score {
+			maxScore = v.Node.Score
+			distScore = []*Node{v.Node}
+		} else if maxScore == v.Node.Score {
+			distScore = append(distScore, v.Node)
+		}
+	}
+
+	fitNode := distScore[0]
+	for _, d := range distScore {
+		if fitNode.Distance > d.Distance {
+			fitNode = d
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "%d (%d) MOVE %d %d %s\n", d.ID, len(scoreVertex), fitNode.X, fitNode.Y, d.Light())
+	fmt.Printf("MOVE %d %d %s\n", fitNode.X, fitNode.Y, d.Light())
 }
 
 func (d *Drone) DetectMode() string {
@@ -772,6 +818,167 @@ func NewGameCreature() *GameCreature {
 	return c
 }
 
+var moves = [][]int{
+	{-1, 0}, {0, -1}, {1, 0}, {0, 1},
+}
+
+type Vertex struct {
+	ID   Point
+	Node *Node
+
+	Vertices map[Point]*Vertex
+}
+
+func NewVertex(node *Node) *Vertex {
+	return &Vertex{
+		ID:       node.Point,
+		Node:     node,
+		Vertices: make(map[Point]*Vertex, 0),
+	}
+}
+
+func NewGraph(i, j int, nodes [][]*Node, used map[Point]struct{}) *Vertex {
+
+	if i < 0 || j < 0 {
+		return nil
+	}
+	if i >= len(nodes) || j >= len(nodes[i]) {
+		return nil
+	}
+
+	start := nodes[i][j]
+	if _, ok := used[start.Point]; ok {
+		return nil
+	}
+	start.Used = true
+	root := &Vertex{
+		ID:   start.Point,
+		Node: start,
+	}
+
+	if used == nil {
+		used = map[Point]struct{}{}
+	}
+	used[root.ID] = struct{}{}
+	// fmt.Fprintln(os.Stderr, i, j)
+	for _, move := range moves {
+		i := i + move[0]
+		j := j + move[1]
+		if i < 0 || j < 0 {
+			continue
+		}
+		if i >= len(nodes) || j >= len(nodes[i]) {
+			continue
+		}
+		node := nodes[i][j]
+		if node.Used {
+			continue
+		}
+		node.Used = true
+		// fmt.Fprintf(os.Stderr, "%v:%d:%d|", move, i, j)
+		v := NewGraph(i, j, nodes, used)
+		if v == nil {
+			continue
+		}
+		if root.Vertices == nil {
+			root.Vertices = map[Point]*Vertex{}
+		}
+
+		used[node.Point] = struct{}{}
+		root.Vertices[node.Point] = v
+	}
+
+	return root
+}
+
+func DebugVertex(v *Vertex) {
+	fmt.Fprintf(os.Stderr, "%d:%d:%d:%d\n", v.ID.X, v.ID.Y, v.Node.Score, v.Node.Distance)
+	for _, k := range v.Vertices {
+		fmt.Fprintf(os.Stderr, "(%d:%d:%d:%d)|", k.ID.X, k.ID.Y, k.Node.Score, v.Node.Distance)
+	}
+	fmt.Fprintln(os.Stderr)
+	for _, vv := range v.Vertices {
+		DebugVertex(vv)
+	}
+}
+
+// create a node that holds the graphs vertex as data
+type node struct {
+	v    *Vertex
+	next *node
+}
+
+// create a queue data structure
+type queue struct {
+	head *node
+	tail *node
+}
+
+// enqueue adds a new node to the tail of the queue
+func (q *queue) enqueue(v *Vertex) {
+	n := &node{v: v}
+
+	// if the queue is empty, set the head and tail as the node value
+	if q.tail == nil {
+		q.head = n
+		q.tail = n
+		return
+	}
+
+	q.tail.next = n
+	q.tail = n
+}
+
+// dequeue removes the head from the queue and returns it
+func (q *queue) dequeue() *Vertex {
+	n := q.head
+	// return nil, if head is empty
+	if n == nil {
+		return nil
+	}
+
+	q.head = q.head.next
+
+	// if there wasn't any next node, that
+	// means the queue is empty, and the tail
+	// should be set to nil
+	if q.head == nil {
+		q.tail = nil
+	}
+
+	return n.v
+}
+
+func BFS(startVertex *Vertex, visitCb func(*Vertex)) {
+	// initialize queue and visited vertices map
+	vertexQueue := &queue{}
+	visitedVertices := map[Point]struct{}{}
+
+	currentVertex := startVertex
+	// start a continuous loop
+	for {
+		// visit the current node
+		visitCb(currentVertex)
+		visitedVertices[currentVertex.ID] = struct{}{}
+
+		// for each neighboring vertex, push it to the queue
+		// if it isn't already visited
+		for _, v := range currentVertex.Vertices {
+			if _, ok := visitedVertices[v.ID]; !ok {
+				vertexQueue.enqueue(v)
+			}
+		}
+
+		// change the current vertex to the next one
+		// in the queue
+		currentVertex = vertexQueue.dequeue()
+		// if the queue is empty, break out of the loop
+		if currentVertex == nil {
+			break
+		}
+	}
+}
+
 func main() {
 	game := NewGame()
 
@@ -846,9 +1053,19 @@ func main() {
 			}
 			m := drone.Solve(game, s, s.MapRadar[drone.ID], newPoint)
 			DebugLocation(m, drone.ID, newPoint)
-
-			m = drone.MoveByLocation(m, nil)
+			v := drone.SolveToGraph(game, s, m, newPoint)
+			BFS(v, func(v *Vertex) {
+				// fmt.Fprintf(os.Stderr, ">>(%d:%d:%d)\n", v.ID.X, v.ID.Y, len(v.Vertices))
+				for k := range v.Vertices {
+					v.Vertices[k].Node.Score += v.Node.Score
+				}
+			})
 			DebugLocation(m, drone.ID, newPoint)
+			// DebugVertex(v)
+
+			drone.MoveByVertex(v)
+			// _ = drone.MoveByLocation(m, nil)
+			// DebugLocation(m, drone.ID, newPoint)
 		}
 	}
 }
@@ -867,9 +1084,14 @@ type Node struct {
 	FoeDrone *Drone
 	Creature *Creature
 	Used     bool
+	End      bool
 }
 
-func DebugLocation(location [][]Node, droneID int, target Point) {
+func (n *Node) StringID() string {
+	return fmt.Sprintf("%d:%d", n.X, n.Y)
+}
+
+func DebugLocation(location [][]*Node, droneID int, target Point) {
 	fmt.Fprintln(os.Stderr, "debug location", droneID, target)
 	for _, nn := range location {
 		for _, n := range nn {

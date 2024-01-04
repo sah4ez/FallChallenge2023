@@ -80,9 +80,19 @@ func main() {
 			}
 			m := drone.Solve(game, s, s.MapRadar[drone.ID], newPoint)
 			DebugLocation(m, drone.ID, newPoint)
-
-			m = drone.MoveByLocation(m, nil)
+			v := drone.SolveToGraph(game, s, m, newPoint)
+			BFS(v, func(v *Vertex) {
+				// fmt.Fprintf(os.Stderr, ">>(%d:%d:%d)\n", v.ID.X, v.ID.Y, len(v.Vertices))
+				for k := range v.Vertices {
+					v.Vertices[k].Node.Score += v.Node.Score
+				}
+			})
 			DebugLocation(m, drone.ID, newPoint)
+			// DebugVertex(v)
+
+			drone.MoveByVertex(v)
+			// _ = drone.MoveByLocation(m, nil)
+			// DebugLocation(m, drone.ID, newPoint)
 		}
 	}
 }

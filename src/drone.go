@@ -207,7 +207,23 @@ func (d *Drone) GetRadiusLight() float64 {
 	return radius
 }
 
-func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]Node {
+func (d *Drone) SolveToGraph(g *GameState, s *State, location [][]*Node, target Point) *Vertex {
+	i, j := 0, 0
+	if len(location)%2 == 0 {
+		i = len(location) / 2
+	} else {
+		i = len(location)/2 + 1
+	}
+	if len(location[i])%2 == 0 {
+		j = len(location[i]) / 2
+	} else {
+		j = len(location[i])/2 + 1
+	}
+
+	return NewGraph(i, j, location, nil)
+}
+
+func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*Node {
 	startX := d.X - AutoScanDistance
 	if startX < 0 {
 		startX = 0
@@ -225,7 +241,7 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]N
 		endY = MaxPosistionY
 	}
 
-	location := make([][]Node, int(math.Floor(float64(endX-startX)/StepScan)))
+	location := make([][]*Node, int(math.Floor(float64(endX-startX)/StepScan)))
 	i := 0
 	monsters := []Creature{}
 	for _, c := range s.Creatures {
@@ -239,7 +255,7 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]N
 		if i >= len(location) {
 			continue
 		}
-		location[i] = make([]Node, int(math.Floor(float64(endY-startY)/StepScan)))
+		location[i] = make([]*Node, int(math.Floor(float64(endY-startY)/StepScan)))
 		j := 0
 		for y := startY; y < endY; y += int(StepScan) {
 			if j >= len(location[i]) {
@@ -247,14 +263,15 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]N
 			}
 			from := Point{X: x, Y: y}
 			score := 0
-			if !d.NearMonster {
+			if !d.NearMonster && false {
 				nearest := NearestNode(d.radiusPoint, from)
 				for _, c := range nearest.CreaturesTypes {
 					if c.Type < 0 {
 						score -= 1
-					} else {
-						score += 1
 					}
+					// else {
+					// score += 1
+					// }
 				}
 			}
 			for _, m := range monsters {
@@ -265,12 +282,18 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]N
 					score -= 1
 				}
 			}
-			n := Node{
+			n := &Node{
 				I:        i,
 				J:        j,
 				Point:    from,
 				Distance: int(LocationDistance(from, target)),
 				Score:    score,
+			}
+			if i == 0 || j == 0 {
+				n.End = true
+			}
+			if i == len(location)-1 || j == len(location[i])-1 {
+				n.End = true
 			}
 			location[i][j] = n
 			j++
@@ -350,12 +373,6 @@ func (d *Drone) Move(p Point, msg ...string) {
 		p.Y = MaxPosistionY - AutoScanDistance + 3
 	}
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
-}
-
-var moves = [][]int{
-	{1, -1}, {0, -1}, {-1, -1},
-	{1, 0}, {0, 0}, {-1, 0},
-	{1, 1}, {0, 1}, {-1, 1},
 }
 
 func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
@@ -460,6 +477,35 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 		location = d.MoveByLocation(location, &location[i][j])
 	}
 	return location
+}
+
+func (d *Drone) MoveByVertex(start *Vertex) {
+	scoreVertex := make([]*Vertex, 0)
+	BFS(start, func(v *Vertex) {
+		if v.Node.End {
+			scoreVertex = append(scoreVertex, v)
+		}
+	})
+	maxScore := scoreVertex[0].Node.Score
+	distScore := []*Node{scoreVertex[0].Node}
+	for _, v := range scoreVertex {
+		if maxScore < v.Node.Score {
+			maxScore = v.Node.Score
+			distScore = []*Node{v.Node}
+		} else if maxScore == v.Node.Score {
+			distScore = append(distScore, v.Node)
+		}
+	}
+
+	fitNode := distScore[0]
+	for _, d := range distScore {
+		if fitNode.Distance > d.Distance {
+			fitNode = d
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "%d (%d) MOVE %d %d %s\n", d.ID, len(scoreVertex), fitNode.X, fitNode.Y, d.Light())
+	fmt.Printf("MOVE %d %d %s\n", fitNode.X, fitNode.Y, d.Light())
 }
 
 func (d *Drone) DetectMode() string {
