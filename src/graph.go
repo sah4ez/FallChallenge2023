@@ -31,13 +31,13 @@ func NewVertex(node *Node) *Vertex {
 	}
 }
 
-func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) {
+func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) []*Node {
 
 	if i < 0 || j < 0 {
-		return
+		return nil
 	}
 	if i >= len(nodes) || j >= len(nodes[i]) {
-		return
+		return nil
 	}
 
 	if used == nil {
@@ -158,9 +158,11 @@ func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) {
 			// fmt.Fprintf(os.Stderr, "(%d:%d:%d)->", p.I, p.J, score)
 			if i == len(path)-1 {
 				p.Score = score
+				p.Steps = i
 			}
 		}
 	}
+	return border
 }
 
 func NewGraph(i, j int, nodes [][]*Node, used map[Point]struct{}, parent *Vertex) *Vertex {

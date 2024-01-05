@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand"
 	"testing"
 )
 
@@ -12,10 +13,11 @@ func TestNewGraph3x3(t *testing.T) {
 		src = append(src, make([]*Node, 0))
 		for j := 0; j < max; j++ {
 			src[i] = append(src[i], &Node{
-				Point: Point{X: i, Y: j},
-				I:     i,
-				J:     j,
-				Score: -1,
+				Point:    Point{X: i, Y: j},
+				I:        i,
+				J:        j,
+				Score:    -1 * rand.Intn(10),
+				Distance: -i - j,
 			},
 			)
 		}
@@ -27,6 +29,12 @@ func TestNewGraph3x3(t *testing.T) {
 	}
 	t.Logf("%d:%d", i, j)
 	DebugLocation(src, 0, Point{X: i, Y: j})
-	FillLocation(i, j, src, nil)
+	path := FillLocation(i, j, src, nil)
 	DebugLocation(src, 0, Point{X: i, Y: j})
+	drone := Drone{}
+	p := drone.MoveByLocation2(path)
+	for _, p := range path {
+		t.Logf("%d:%d:%d:%d", p.I, p.J, p.Score, p.Steps)
+	}
+	t.Logf("%d:%d:%d", p.I, p.J, p.Score)
 }

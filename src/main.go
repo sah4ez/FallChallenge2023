@@ -87,13 +87,16 @@ func main() {
 			//		v.Vertices[k].Node.Score += v.Node.Score
 			//	}
 			//})
-			drone.SolveFillLocation(m, nil)
+			path := drone.SolveFillLocation(m, nil)
 			DebugLocation(m, drone.ID, newPoint)
 			// DebugVertex(v)
 
 			// drone.MoveByVertex(v)
-			m = drone.MoveByLocation(m, nil)
-			DebugLocation(m, drone.ID, newPoint)
+			// m = drone.MoveByLocation(m, nil)
+			p := drone.MoveByLocation2(path)
+			drone.Move(p.Point)
+
+			// DebugLocation(m, drone.ID, newPoint)
 		}
 	}
 }

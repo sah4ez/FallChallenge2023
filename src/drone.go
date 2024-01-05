@@ -164,7 +164,7 @@ func (d *Drone) TurnLight(g *GameState) {
 	if d.Battery >= LightBattary {
 		d.enabledLight = true
 	}
-	fmt.Fprintf(os.Stderr, "turn light: %d %d %v\n", d.ID, d.Battery, d.enabledLight)
+	fmt.Fprintf(os.Stderr, "turn light: %d %d  %v\n", d.ID, d.Battery, d.enabledLight)
 }
 
 func (d *Drone) Light() string {
@@ -223,7 +223,7 @@ func (d *Drone) SolveToGraph(g *GameState, s *State, location [][]*Node, target 
 	return NewGraph(i, j, location, nil, nil)
 }
 
-func (d *Drone) SolveFillLocation(location [][]*Node, used map[Point]struct{}) {
+func (d *Drone) SolveFillLocation(location [][]*Node, used map[Point]struct{}) []*Node {
 
 	i, j := 0, 0
 	if len(location)%2 == 0 {
@@ -236,7 +236,7 @@ func (d *Drone) SolveFillLocation(location [][]*Node, used map[Point]struct{}) {
 	} else {
 		j = len(location[i])/2 + 1
 	}
-	FillLocation(i, j, location, used)
+	return FillLocation(i, j, location, used)
 }
 
 func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*Node {
@@ -389,6 +389,45 @@ func (d *Drone) Move(p Point, msg ...string) {
 		p.Y = MaxPosistionY - AutoScanDistance + 3
 	}
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
+}
+
+func (d *Drone) MoveByLocation2(location []*Node) *Node {
+	max := location[0]
+	dist := []*Node{max}
+	for _, p := range location {
+		if max.Score < p.Score {
+			max = p
+			dist = []*Node{max}
+		} else if max.Score == p.Score {
+			dist = append(dist, p)
+		}
+	}
+	if d.NearMonster {
+		minSteps := dist[0]
+		distSteps := []*Node{minSteps}
+		for _, p := range dist {
+			if minSteps.Steps > p.Steps {
+				minSteps = p
+				distSteps = []*Node{minSteps}
+			} else if minSteps.Steps == p.Steps {
+				distSteps = append(distSteps, p)
+			}
+		}
+		min := distSteps[0]
+		for _, dd := range distSteps {
+			if min.Distance > dd.Distance {
+				min = dd
+			}
+		}
+		return min
+	}
+	min := dist[0]
+	for _, dd := range dist {
+		if min.Distance > dd.Distance {
+			min = dd
+		}
+	}
+	return min
 }
 
 func (d *Drone) MoveByLocation(location [][]*Node, parent *Node) [][]*Node {

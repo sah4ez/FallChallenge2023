@@ -11,6 +11,7 @@ type Node struct {
 	I      int
 	J      int
 	Parent *Node
+	Steps  int
 
 	CreaturesTypes []*GameCreature
 	Score          int

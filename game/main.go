@@ -214,7 +214,7 @@ func (d *Drone) TurnLight(g *GameState) {
 	if d.Battery >= LightBattary {
 		d.enabledLight = true
 	}
-	fmt.Fprintf(os.Stderr, "turn light: %d %d %v\n", d.ID, d.Battery, d.enabledLight)
+	fmt.Fprintf(os.Stderr, "turn light: %d %d  %v\n", d.ID, d.Battery, d.enabledLight)
 }
 
 func (d *Drone) Light() string {
@@ -273,7 +273,7 @@ func (d *Drone) SolveToGraph(g *GameState, s *State, location [][]*Node, target 
 	return NewGraph(i, j, location, nil, nil)
 }
 
-func (d *Drone) SolveFillLocation(location [][]*Node, used map[Point]struct{}) {
+func (d *Drone) SolveFillLocation(location [][]*Node, used map[Point]struct{}) []*Node {
 
 	i, j := 0, 0
 	if len(location)%2 == 0 {
@@ -286,7 +286,7 @@ func (d *Drone) SolveFillLocation(location [][]*Node, used map[Point]struct{}) {
 	} else {
 		j = len(location[i])/2 + 1
 	}
-	FillLocation(i, j, location, used)
+	return FillLocation(i, j, location, used)
 }
 
 func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*Node {
@@ -439,6 +439,45 @@ func (d *Drone) Move(p Point, msg ...string) {
 		p.Y = MaxPosistionY - AutoScanDistance + 3
 	}
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
+}
+
+func (d *Drone) MoveByLocation2(location []*Node) *Node {
+	max := location[0]
+	dist := []*Node{max}
+	for _, p := range location {
+		if max.Score < p.Score {
+			max = p
+			dist = []*Node{max}
+		} else if max.Score == p.Score {
+			dist = append(dist, p)
+		}
+	}
+	if d.NearMonster {
+		minSteps := dist[0]
+		distSteps := []*Node{minSteps}
+		for _, p := range dist {
+			if minSteps.Steps > p.Steps {
+				minSteps = p
+				distSteps = []*Node{minSteps}
+			} else if minSteps.Steps == p.Steps {
+				distSteps = append(distSteps, p)
+			}
+		}
+		min := distSteps[0]
+		for _, dd := range distSteps {
+			if min.Distance > dd.Distance {
+				min = dd
+			}
+		}
+		return min
+	}
+	min := dist[0]
+	for _, dd := range dist {
+		if min.Distance > dd.Distance {
+			min = dd
+		}
+	}
+	return min
 }
 
 func (d *Drone) MoveByLocation(location [][]*Node, parent *Node) [][]*Node {
@@ -861,13 +900,13 @@ func NewVertex(node *Node) *Vertex {
 	}
 }
 
-func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) {
+func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) []*Node {
 
 	if i < 0 || j < 0 {
-		return
+		return nil
 	}
 	if i >= len(nodes) || j >= len(nodes[i]) {
-		return
+		return nil
 	}
 
 	if used == nil {
@@ -988,20 +1027,11 @@ func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) {
 			// fmt.Fprintf(os.Stderr, "(%d:%d:%d)->", p.I, p.J, score)
 			if i == len(path)-1 {
 				p.Score = score
+				p.Steps = i
 			}
 		}
-		// fmt.Fprintln(os.Stderr)
-		// for i := len(path) - 1; i >= 0; i-- {
-		// if _, ok := markScored[path[i].Point]; ok {
-		// continue
-		// }
-		// if i-1 < 0 {
-		// break
-		// }
-		// path[i-1].Score += path[i].Score
-		// markScored[path[i].Point] = struct{}{}
-		// }
 	}
+	return border
 }
 
 func NewGraph(i, j int, nodes [][]*Node, used map[Point]struct{}, parent *Vertex) *Vertex {
@@ -1164,10 +1194,11 @@ func TestNewGraph3x3(t *testing.T) {
 		src = append(src, make([]*Node, 0))
 		for j := 0; j < max; j++ {
 			src[i] = append(src[i], &Node{
-				Point: Point{X: i, Y: j},
-				I:     i,
-				J:     j,
-				Score: -1,
+				Point:    Point{X: i, Y: j},
+				I:        i,
+				J:        j,
+				Score:    -1 * rand.Intn(10),
+				Distance: -i - j,
 			},
 			)
 		}
@@ -1179,8 +1210,14 @@ func TestNewGraph3x3(t *testing.T) {
 	}
 	t.Logf("%d:%d", i, j)
 	DebugLocation(src, 0, Point{X: i, Y: j})
-	FillLocation(i, j, src, nil)
+	path := FillLocation(i, j, src, nil)
 	DebugLocation(src, 0, Point{X: i, Y: j})
+	drone := Drone{}
+	p := drone.MoveByLocation2(path)
+	for _, p := range path {
+		t.Logf("%d:%d:%d:%d", p.I, p.J, p.Score, p.Steps)
+	}
+	t.Logf("%d:%d:%d", p.I, p.J, p.Score)
 }
 
 func main() {
@@ -1264,13 +1301,16 @@ func main() {
 			//		v.Vertices[k].Node.Score += v.Node.Score
 			//	}
 			//})
-			drone.SolveFillLocation(m, nil)
+			path := drone.SolveFillLocation(m, nil)
 			DebugLocation(m, drone.ID, newPoint)
 			// DebugVertex(v)
 
 			// drone.MoveByVertex(v)
-			m = drone.MoveByLocation(m, nil)
-			DebugLocation(m, drone.ID, newPoint)
+			// m = drone.MoveByLocation(m, nil)
+			p := drone.MoveByLocation2(path)
+			drone.Move(p.Point)
+
+			// DebugLocation(m, drone.ID, newPoint)
 		}
 	}
 }
@@ -1280,6 +1320,7 @@ type Node struct {
 	I      int
 	J      int
 	Parent *Node
+	Steps  int
 
 	CreaturesTypes []*GameCreature
 	Score          int
