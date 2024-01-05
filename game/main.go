@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"testing"
 )
 
 const SurfaceDistance = 500.0
@@ -208,12 +209,12 @@ func (d *Drone) Position() Point {
 }
 
 func (d *Drone) TurnLight(g *GameState) {
-	cnt := g.GetCoutLights(d)
+	// cnt := g.GetCoutLights(d)
 
-	if d.Battery >= LightBattary && cnt > 0 {
+	if d.Battery >= LightBattary {
 		d.enabledLight = true
 	}
-	fmt.Fprintf(os.Stderr, "turn light: %d %d %d %v\n", d.ID, d.Battery, cnt, d.enabledLight)
+	fmt.Fprintf(os.Stderr, "turn light: %d %d %v\n", d.ID, d.Battery, d.enabledLight)
 }
 
 func (d *Drone) Light() string {
@@ -269,7 +270,23 @@ func (d *Drone) SolveToGraph(g *GameState, s *State, location [][]*Node, target 
 		j = len(location[i])/2 + 1
 	}
 
-	return NewGraph(i, j, location, nil)
+	return NewGraph(i, j, location, nil, nil)
+}
+
+func (d *Drone) SolveFillLocation(location [][]*Node, used map[Point]struct{}) {
+
+	i, j := 0, 0
+	if len(location)%2 == 0 {
+		i = len(location) / 2
+	} else {
+		i = len(location)/2 + 1
+	}
+	if len(location[i])%2 == 0 {
+		j = len(location[i]) / 2
+	} else {
+		j = len(location[i])/2 + 1
+	}
+	FillLocation(i, j, location, used)
 }
 
 func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*Node {
@@ -424,7 +441,7 @@ func (d *Drone) Move(p Point, msg ...string) {
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
 }
 
-func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
+func (d *Drone) MoveByLocation(location [][]*Node, parent *Node) [][]*Node {
 	if parent == nil {
 		i, j := 0, 0
 		if len(location)%2 == 0 {
@@ -438,10 +455,10 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 			j = len(location[i])/2 + 1
 		}
 		location[i][j].Used = true
-		location = d.MoveByLocation(location, &location[i][j])
+		location = d.MoveByLocation(location, location[i][j])
 
 		fitNode := location[0][0]
-		scoreNodes := []Node{}
+		scoreNodes := []*Node{}
 		for i, nn := range location {
 			if i == 0 || i == len(location)-1 {
 				for _, n := range nn {
@@ -449,7 +466,7 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 						scoreNodes = append(scoreNodes, n)
 					} else if n.Score > fitNode.Score {
 						fitNode = n
-						scoreNodes = []Node{n}
+						scoreNodes = []*Node{n}
 					}
 				}
 			} else {
@@ -458,14 +475,14 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 					scoreNodes = append(scoreNodes, n)
 				} else if n.Score > fitNode.Score {
 					fitNode = n
-					scoreNodes = []Node{n}
+					scoreNodes = []*Node{n}
 				}
 				n = nn[len(nn)-1]
 				if n.Score == fitNode.Score {
 					scoreNodes = append(scoreNodes, n)
 				} else if n.Score > fitNode.Score {
 					fitNode = n
-					scoreNodes = []Node{n}
+					scoreNodes = []*Node{n}
 				}
 			}
 		}
@@ -523,7 +540,7 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 		if j >= len(location[i]) {
 			j = len(location[i]) - 1
 		}
-		location = d.MoveByLocation(location, &location[i][j])
+		location = d.MoveByLocation(location, location[i][j])
 	}
 	return location
 }
@@ -818,13 +835,20 @@ func NewGameCreature() *GameCreature {
 	return c
 }
 
+var moves2 = [][]int{
+	{-1, -1}, {0, -1}, {1, -1},
+	{-1, 0}, {0, 0}, {1, 0},
+	{-1, 1}, {0, 1}, {1, 1},
+}
+
 var moves = [][]int{
 	{-1, 0}, {0, -1}, {1, 0}, {0, 1},
 }
 
 type Vertex struct {
-	ID   Point
-	Node *Node
+	ID     Point
+	Node   *Node
+	Parent *Vertex
 
 	Vertices map[Point]*Vertex
 }
@@ -837,7 +861,150 @@ func NewVertex(node *Node) *Vertex {
 	}
 }
 
-func NewGraph(i, j int, nodes [][]*Node, used map[Point]struct{}) *Vertex {
+func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) {
+
+	if i < 0 || j < 0 {
+		return
+	}
+	if i >= len(nodes) || j >= len(nodes[i]) {
+		return
+	}
+
+	if used == nil {
+		used = make(map[Point]struct{})
+	}
+	border := make([]*Node, 0)
+	// first
+	for _, b := range nodes[0] {
+		if _, ok := used[b.Point]; ok {
+			continue
+		}
+		used[b.Point] = struct{}{}
+		border = append(border, b)
+	}
+	// last
+	for _, b := range nodes[len(nodes)-1] {
+		if _, ok := used[b.Point]; ok {
+			continue
+		}
+		used[b.Point] = struct{}{}
+		border = append(border, b)
+	}
+
+	for j := 0; j < len(nodes); j++ {
+		b := nodes[j][0]
+		if _, ok := used[b.Point]; ok {
+			continue
+		}
+		used[b.Point] = struct{}{}
+		border = append(border, b)
+	}
+	for j := 0; j < len(nodes); j++ {
+		b := nodes[j][len(nodes[j])-1]
+		if _, ok := used[b.Point]; ok {
+			continue
+		}
+		used[b.Point] = struct{}{}
+		border = append(border, b)
+	}
+
+	var f func(x, y int, target *Node, parent *Node, mark map[Point]struct{}) *Node
+
+	f = func(x, y int, target *Node, parent *Node, mark map[Point]struct{}) *Node {
+		if mark == nil {
+			mark = map[Point]struct{}{}
+		}
+		result := nodes[x][y]
+		if parent.I != result.I && parent.J != result.J {
+			result.Parent = parent
+		}
+		min := LocationDistance(Point{result.I, result.J}, Point{target.I, target.J})
+		for _, move := range moves2 {
+			i := x + move[0]
+			j := y + move[1]
+			if i < 0 || j < 0 {
+				continue
+			}
+			if i >= len(nodes) || j >= len(nodes[i]) {
+				continue
+			}
+			node := nodes[i][j]
+			if _, ok := mark[node.Point]; ok {
+				continue
+			}
+			node.Parent = parent
+			newMin := LocationDistance(Point{node.I, node.J}, Point{target.I, target.J})
+			if min > newMin {
+				min = newMin
+				result = node
+			}
+			mark[node.Point] = struct{}{}
+		}
+
+		if result.I == target.I && result.J == target.J {
+			target.Parent = parent
+			return target
+		}
+		result = f(result.I, result.J, target, result, mark)
+		return result
+	}
+
+	// markScored := map[Point]struct{}{}
+	for m, b := range border {
+		parent := nodes[i][j]
+		newB := f(i, j, b, parent, nil)
+		if newB == nil {
+			continue
+		}
+		border[m] = newB
+
+		next := newB
+		// score := next.Score
+		// if next.Parent != nil {
+		// fmt.Fprintf(os.Stderr, "(%d:%d)(%d:%d)->(%d:%d)->", i, j, next.I, next.J, next.Parent.I, next.Parent.J)
+		// } else {
+		// fmt.Fprintf(os.Stderr, "(%d:%d)(%d:%d)->(%d:%d)->", i, j, next.I, next.J, parent.I, parent.J)
+		// }
+		path := []*Node{next}
+		for {
+			parent := next.Parent
+			if parent == nil {
+				break
+			}
+			path = append(path, parent)
+			// parent.Score += score
+			// fmt.Fprintf(os.Stderr, "(%d:%d)(%d:%d)->(%d:%d)->", i, j, next.I, next.J, parent.I, parent.J)
+			if parent.I == i && parent.J == j {
+				break
+			}
+			next = parent
+		}
+		for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+			path[i], path[j] = path[j], path[i]
+		}
+		score := 0
+		for i, p := range path {
+			score += p.Score
+			// fmt.Fprintf(os.Stderr, "(%d:%d:%d)->", p.I, p.J, score)
+			if i == len(path)-1 {
+				p.Score = score
+			}
+		}
+		// fmt.Fprintln(os.Stderr)
+		// for i := len(path) - 1; i >= 0; i-- {
+		// if _, ok := markScored[path[i].Point]; ok {
+		// continue
+		// }
+		// if i-1 < 0 {
+		// break
+		// }
+		// path[i-1].Score += path[i].Score
+		// markScored[path[i].Point] = struct{}{}
+		// }
+	}
+}
+
+func NewGraph(i, j int, nodes [][]*Node, used map[Point]struct{}, parent *Vertex) *Vertex {
 
 	if i < 0 || j < 0 {
 		return nil
@@ -852,8 +1019,9 @@ func NewGraph(i, j int, nodes [][]*Node, used map[Point]struct{}) *Vertex {
 	}
 	start.Used = true
 	root := &Vertex{
-		ID:   start.Point,
-		Node: start,
+		ID:     start.Point,
+		Node:   start,
+		Parent: parent,
 	}
 
 	if used == nil {
@@ -861,6 +1029,7 @@ func NewGraph(i, j int, nodes [][]*Node, used map[Point]struct{}) *Vertex {
 	}
 	used[root.ID] = struct{}{}
 	// fmt.Fprintln(os.Stderr, i, j)
+	vertices := []*Vertex{}
 	for _, move := range moves {
 		i := i + move[0]
 		j := j + move[1]
@@ -876,16 +1045,24 @@ func NewGraph(i, j int, nodes [][]*Node, used map[Point]struct{}) *Vertex {
 		}
 		node.Used = true
 		// fmt.Fprintf(os.Stderr, "%v:%d:%d|", move, i, j)
-		v := NewGraph(i, j, nodes, used)
+		v := NewVertex(node)
 		if v == nil {
 			continue
 		}
+		vertices = append(vertices, v)
+	}
+
+	for _, v := range vertices {
+		v.Parent = root
 		if root.Vertices == nil {
 			root.Vertices = map[Point]*Vertex{}
 		}
 
-		used[node.Point] = struct{}{}
-		root.Vertices[node.Point] = v
+		v := NewGraph(v.Node.I, v.Node.J, nodes, used, root)
+		if v != nil {
+			root.Vertices[v.ID] = v
+		}
+		used[v.ID] = struct{}{}
 	}
 
 	return root
@@ -979,6 +1156,33 @@ func BFS(startVertex *Vertex, visitCb func(*Vertex)) {
 	}
 }
 
+func TestNewGraph3x3(t *testing.T) {
+	src := [][]*Node{}
+	max := 5
+
+	for i := 0; i < max; i++ {
+		src = append(src, make([]*Node, 0))
+		for j := 0; j < max; j++ {
+			src[i] = append(src[i], &Node{
+				Point: Point{X: i, Y: j},
+				I:     i,
+				J:     j,
+				Score: -1,
+			},
+			)
+		}
+	}
+
+	i, j := max/2, max/2
+	if max%2 == 0 {
+		i, j = i-1, j-1
+	}
+	t.Logf("%d:%d", i, j)
+	DebugLocation(src, 0, Point{X: i, Y: j})
+	FillLocation(i, j, src, nil)
+	DebugLocation(src, 0, Point{X: i, Y: j})
+}
+
 func main() {
 	game := NewGame()
 
@@ -1053,27 +1257,29 @@ func main() {
 			}
 			m := drone.Solve(game, s, s.MapRadar[drone.ID], newPoint)
 			DebugLocation(m, drone.ID, newPoint)
-			v := drone.SolveToGraph(game, s, m, newPoint)
-			BFS(v, func(v *Vertex) {
-				// fmt.Fprintf(os.Stderr, ">>(%d:%d:%d)\n", v.ID.X, v.ID.Y, len(v.Vertices))
-				for k := range v.Vertices {
-					v.Vertices[k].Node.Score += v.Node.Score
-				}
-			})
+			//v := drone.SolveToGraph(game, s, m, newPoint)
+			//BFS(v, func(v *Vertex) {
+			//	// fmt.Fprintf(os.Stderr, ">>(%d:%d:%d)\n", v.ID.X, v.ID.Y, len(v.Vertices))
+			//	for k := range v.Vertices {
+			//		v.Vertices[k].Node.Score += v.Node.Score
+			//	}
+			//})
+			drone.SolveFillLocation(m, nil)
 			DebugLocation(m, drone.ID, newPoint)
 			// DebugVertex(v)
 
-			drone.MoveByVertex(v)
-			// _ = drone.MoveByLocation(m, nil)
-			// DebugLocation(m, drone.ID, newPoint)
+			// drone.MoveByVertex(v)
+			m = drone.MoveByLocation(m, nil)
+			DebugLocation(m, drone.ID, newPoint)
 		}
 	}
 }
 
 type Node struct {
 	Point
-	I int
-	J int
+	I      int
+	J      int
+	Parent *Node
 
 	CreaturesTypes []*GameCreature
 	Score          int

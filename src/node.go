@@ -8,8 +8,9 @@ import (
 
 type Node struct {
 	Point
-	I int
-	J int
+	I      int
+	J      int
+	Parent *Node
 
 	CreaturesTypes []*GameCreature
 	Score          int

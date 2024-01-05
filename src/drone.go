@@ -159,12 +159,12 @@ func (d *Drone) Position() Point {
 }
 
 func (d *Drone) TurnLight(g *GameState) {
-	cnt := g.GetCoutLights(d)
+	// cnt := g.GetCoutLights(d)
 
-	if d.Battery >= LightBattary && cnt > 0 {
+	if d.Battery >= LightBattary {
 		d.enabledLight = true
 	}
-	fmt.Fprintf(os.Stderr, "turn light: %d %d %d %v\n", d.ID, d.Battery, cnt, d.enabledLight)
+	fmt.Fprintf(os.Stderr, "turn light: %d %d %v\n", d.ID, d.Battery, d.enabledLight)
 }
 
 func (d *Drone) Light() string {
@@ -220,7 +220,23 @@ func (d *Drone) SolveToGraph(g *GameState, s *State, location [][]*Node, target 
 		j = len(location[i])/2 + 1
 	}
 
-	return NewGraph(i, j, location, nil)
+	return NewGraph(i, j, location, nil, nil)
+}
+
+func (d *Drone) SolveFillLocation(location [][]*Node, used map[Point]struct{}) {
+
+	i, j := 0, 0
+	if len(location)%2 == 0 {
+		i = len(location) / 2
+	} else {
+		i = len(location)/2 + 1
+	}
+	if len(location[i])%2 == 0 {
+		j = len(location[i]) / 2
+	} else {
+		j = len(location[i])/2 + 1
+	}
+	FillLocation(i, j, location, used)
 }
 
 func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*Node {
@@ -375,7 +391,7 @@ func (d *Drone) Move(p Point, msg ...string) {
 	fmt.Printf("MOVE %d %d %s\n", p.X, p.Y, d.Light())
 }
 
-func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
+func (d *Drone) MoveByLocation(location [][]*Node, parent *Node) [][]*Node {
 	if parent == nil {
 		i, j := 0, 0
 		if len(location)%2 == 0 {
@@ -389,10 +405,10 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 			j = len(location[i])/2 + 1
 		}
 		location[i][j].Used = true
-		location = d.MoveByLocation(location, &location[i][j])
+		location = d.MoveByLocation(location, location[i][j])
 
 		fitNode := location[0][0]
-		scoreNodes := []Node{}
+		scoreNodes := []*Node{}
 		for i, nn := range location {
 			if i == 0 || i == len(location)-1 {
 				for _, n := range nn {
@@ -400,7 +416,7 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 						scoreNodes = append(scoreNodes, n)
 					} else if n.Score > fitNode.Score {
 						fitNode = n
-						scoreNodes = []Node{n}
+						scoreNodes = []*Node{n}
 					}
 				}
 			} else {
@@ -409,14 +425,14 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 					scoreNodes = append(scoreNodes, n)
 				} else if n.Score > fitNode.Score {
 					fitNode = n
-					scoreNodes = []Node{n}
+					scoreNodes = []*Node{n}
 				}
 				n = nn[len(nn)-1]
 				if n.Score == fitNode.Score {
 					scoreNodes = append(scoreNodes, n)
 				} else if n.Score > fitNode.Score {
 					fitNode = n
-					scoreNodes = []Node{n}
+					scoreNodes = []*Node{n}
 				}
 			}
 		}
@@ -474,7 +490,7 @@ func (d *Drone) MoveByLocation(location [][]Node, parent *Node) [][]Node {
 		if j >= len(location[i]) {
 			j = len(location[i]) - 1
 		}
-		location = d.MoveByLocation(location, &location[i][j])
+		location = d.MoveByLocation(location, location[i][j])
 	}
 	return location
 }
