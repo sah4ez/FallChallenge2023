@@ -98,5 +98,12 @@ func main() {
 
 			// DebugLocation(m, drone.ID, newPoint)
 		}
+		game.PrevMonster = make([]Creature, 0)
+		for _, s := range s.Creatures {
+			gs := game.GetCreature(s.ID)
+			if gs.Type < 0 {
+				game.PrevMonster = append(game.PrevMonster, s)
+			}
+		}
 	}
 }

@@ -32,6 +32,7 @@ func NewVertex(node *Node) *Vertex {
 }
 
 func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) []*Node {
+	fmt.Fprintf(os.Stderr, "fill position %d %d\n", i, j)
 
 	if i < 0 || j < 0 {
 		return nil
@@ -153,12 +154,21 @@ func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) []*Node {
 			path[i], path[j] = path[j], path[i]
 		}
 		score := 0
+		odd := 0
+		if len(nodes)%2 == 0 {
+			odd = 1
+		}
 		for i, p := range path {
 			score += p.Score
 			// fmt.Fprintf(os.Stderr, "(%d:%d:%d)->", p.I, p.J, score)
 			if i == len(path)-1 {
-				p.Score = score
-				p.Steps = i
+				if p.X == 0 || p.Y == 0 {
+					p.Score = score - odd
+					p.Steps = i + odd
+				} else {
+					p.Score = score
+					p.Steps = i
+				}
 			}
 		}
 	}

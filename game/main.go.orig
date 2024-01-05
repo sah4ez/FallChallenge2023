@@ -18,7 +18,7 @@ const StepScan = float64(150.0)
 const AutoScanMonsterDistance = 1099.0
 const MaxAutoScanDistance = 2000.0
 const ShiftByRadarDistance = 600
-const MonsterDistanceDetect = 600
+const MonsterDistanceDetect = 900
 const MaxPosistionX = 9999
 const MaxPosistionY = 9999
 const MinPosistionX = 0
@@ -35,6 +35,8 @@ const RadarTL = "TL"
 const RadarTR = "TR"
 const RadarBL = "BL"
 const RadarBR = "BR"
+const MinLigthDepth = 2200
+const DroneSize = 300.0
 
 type Creature struct {
 	ID int
@@ -50,6 +52,10 @@ func (c *Creature) Point() Point {
 
 func (c *Creature) NextPoint() Point {
 	return Point{X: c.X + c.Vx, Y: c.Y + c.Vy}
+}
+
+func (c *Creature) MultNextPoint(mul float64) Point {
+	return Point{X: c.X + int(mul)*c.Vx, Y: c.Y + int(mul)*c.Vy}
 }
 
 func NewCreature() Creature {
@@ -211,7 +217,7 @@ func (d *Drone) Position() Point {
 func (d *Drone) TurnLight(g *GameState) {
 	// cnt := g.GetCoutLights(d)
 
-	if d.Battery >= LightBattary {
+	if d.Battery >= LightBattary && d.Y > MinLigthDepth {
 		d.enabledLight = true
 	}
 	fmt.Fprintf(os.Stderr, "turn light: %d %d  %v\n", d.ID, d.Battery, d.enabledLight)
@@ -279,30 +285,34 @@ func (d *Drone) SolveFillLocation(location [][]*Node, used map[Point]struct{}) [
 	if len(location)%2 == 0 {
 		i = len(location) / 2
 	} else {
-		i = len(location)/2 + 1
+		i = len(location) / 2
 	}
 	if len(location[i])%2 == 0 {
 		j = len(location[i]) / 2
 	} else {
-		j = len(location[i])/2 + 1
+		j = len(location[i]) / 2
 	}
 	return FillLocation(i, j, location, used)
 }
 
 func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*Node {
-	startX := d.X - AutoScanDistance
+	distance := int(AutoScanDistance)
+	// if d.enabledLight {
+	// distance = int(MaxAutoScanDistance)
+	// }
+	startX := d.X - distance
 	if startX < 0 {
 		startX = 0
 	}
-	startY := d.Y - AutoScanDistance
+	startY := d.Y - distance
 	if startY < 0 {
 		startY = 0
 	}
-	endX := d.X + AutoScanDistance
+	endX := d.X + distance
 	if endX >= MaxPosistionX {
 		endX = MaxPosistionX
 	}
-	endY := d.Y + AutoScanDistance
+	endY := d.Y + distance
 	if endY >= MaxPosistionY {
 		endY = MaxPosistionY
 	}
@@ -312,11 +322,18 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 	monsters := []Creature{}
 	for _, c := range s.Creatures {
 		gc := g.GetCreature(c.ID)
-		if gc.Type < 0 {
+		if gc.Type < 0 && d.DistanceToPoint(c.Point()) < MaxAutoScanDistance {
 			monsters = append(monsters, c)
 		}
 	}
-	fmt.Fprintln(os.Stderr, "monsters", len(monsters))
+	fmt.Fprintln(os.Stderr, "monsters", len(monsters), "prev", len(g.PrevMonster))
+	if len(monsters) == 0 {
+		prevStep := 2.0
+		for _, m := range g.PrevMonster {
+			nextMonsterPoint := m.MultNextPoint(prevStep)
+			fmt.Fprintf(os.Stderr, "d:%d,m:%d (%d:%d)->(%d:%d)%f\n", d.ID, m.ID, m.X, m.Y, nextMonsterPoint.X, nextMonsterPoint.Y, d.DistanceToPoint(nextMonsterPoint))
+		}
+	}
 	for x := startX; x < endX; x += int(StepScan) {
 		if i >= len(location) {
 			continue
@@ -329,7 +346,7 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 			}
 			from := Point{X: x, Y: y}
 			score := 0
-			if !d.NearMonster && false {
+			if d.NearMonster && false {
 				nearest := NearestNode(d.radiusPoint, from)
 				for _, c := range nearest.CreaturesTypes {
 					if c.Type < 0 {
@@ -347,6 +364,26 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 				if LocationDistance(from, m.NextPoint()) <= MonsterDistanceDetect {
 					score -= 1
 				}
+			}
+
+			if len(monsters) == 0 {
+				prevStep := 2.0
+				for _, m := range g.PrevMonster {
+					if d.DistanceToPoint(m.Point()) <= prevStep*MonsterDistanceDetect {
+						if LocationDistance(from, m.MultNextPoint(prevStep)) <= MonsterDistanceDetect {
+							score -= 1
+						}
+					}
+				}
+			}
+			if NearLeft(from) {
+				score -= 1
+			} else if NearRight(from) {
+				score -= 1
+			} else if NearBottom(from) {
+				score -= 1
+			} else if InCorner(from) {
+				score -= 1
 			}
 			n := &Node{
 				I:        i,
@@ -642,6 +679,7 @@ type GameState struct {
 	CreatureCount int
 	Creatures     []*GameCreature
 	MapCreatures  map[int]*GameCreature
+	PrevMonster   []Creature
 
 	Resurface       map[int]Point
 	DroneTarget     map[int]int
@@ -851,7 +889,8 @@ func NewGame() *GameState {
 			ModeType2: map[int]int{},
 			ModeType3: map[int]int{},
 		},
-		DroneQueue: make(map[int][]Point, 0),
+		DroneQueue:  make(map[int][]Point, 0),
+		PrevMonster: make([]Creature, 0),
 	}
 }
 
@@ -901,6 +940,7 @@ func NewVertex(node *Node) *Vertex {
 }
 
 func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) []*Node {
+	fmt.Fprintf(os.Stderr, "fill position %d %d\n", i, j)
 
 	if i < 0 || j < 0 {
 		return nil
@@ -1021,18 +1061,22 @@ func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) []*Node {
 		for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
 			path[i], path[j] = path[j], path[i]
 		}
-		score := -1
+		score := 0
+		odd := 0
+		if len(nodes)%2 == 0 {
+			odd = 1
+		}
 		for i, p := range path {
-			if p.Score != 0 {
-				score *= p.Score
-			}
+			score += p.Score
 			// fmt.Fprintf(os.Stderr, "(%d:%d:%d)->", p.I, p.J, score)
 			if i == len(path)-1 {
-				if score > 0 {
-					score = -1 * score
+				if p.X == 0 || p.Y == 0 {
+					p.Score = score - odd
+					p.Steps = i + odd
+				} else {
+					p.Score = score
+					p.Steps = i
 				}
-				p.Score = score
-				p.Steps = i
 			}
 		}
 	}
@@ -1193,7 +1237,7 @@ func BFS(startVertex *Vertex, visitCb func(*Vertex)) {
 
 func TestNewGraph3x3(t *testing.T) {
 	src := [][]*Node{}
-	max := 5
+	max := 4
 
 	for i := 0; i < max; i++ {
 		src = append(src, make([]*Node, 0))
@@ -1317,6 +1361,13 @@ func main() {
 
 			// DebugLocation(m, drone.ID, newPoint)
 		}
+		game.PrevMonster = make([]Creature, 0)
+		for _, s := range s.Creatures {
+			gs := game.GetCreature(s.ID)
+			if gs.Type < 0 {
+				game.PrevMonster = append(game.PrevMonster, s)
+			}
+		}
 	}
 }
 
@@ -1347,7 +1398,7 @@ func DebugLocation(location [][]*Node, droneID int, target Point) {
 	fmt.Fprintln(os.Stderr, "debug location", droneID, target)
 	for _, nn := range location {
 		for _, n := range nn {
-			fmt.Fprintf(os.Stderr, "%d.%d.%d.%d|", n.X, n.Y, n.Distance, n.Score)
+			fmt.Fprintf(os.Stderr, "%d.%d.%d.%d.%d|", n.X, n.Y, n.Distance, n.Score, n.Steps)
 		}
 		fmt.Fprintln(os.Stderr)
 	}
@@ -1367,6 +1418,37 @@ func NearestNode(nodes []Node, pos Point) Node {
 
 func LocationDistance(from Point, to Point) float64 {
 	return math.Sqrt(math.Pow(float64(to.X-from.X), 2) + math.Pow(float64(to.Y-from.Y), 2))
+}
+
+func LeftSide(p Point) Point {
+	return Point{X: 0, Y: p.Y}
+}
+
+func RightSide(p Point) Point {
+	return Point{X: MaxPosistionX - AutoScanDistance, Y: p.Y}
+}
+
+func BottomSide(p Point) Point {
+	return Point{X: p.X, Y: MaxPosistionY - AutoScanDistance}
+}
+
+func NearLeft(p Point) bool {
+	side := LeftSide(p)
+	return math.Abs(LocationDistance(side, p)) < DroneSize
+}
+
+func NearRight(p Point) bool {
+	side := RightSide(p)
+	return math.Abs(LocationDistance(side, p)) < DroneSize
+}
+
+func NearBottom(p Point) bool {
+	side := BottomSide(p)
+	return math.Abs(LocationDistance(side, p)) < DroneSize
+}
+
+func InCorner(p Point) bool {
+	return (NearRight(p) && NearBottom(p)) || (NearLeft(p) && NearBottom(p))
 }
 
 type Point struct {

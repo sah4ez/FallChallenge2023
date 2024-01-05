@@ -9,6 +9,7 @@ type GameState struct {
 	CreatureCount int
 	Creatures     []*GameCreature
 	MapCreatures  map[int]*GameCreature
+	PrevMonster   []Creature
 
 	Resurface       map[int]Point
 	DroneTarget     map[int]int
@@ -218,6 +219,7 @@ func NewGame() *GameState {
 			ModeType2: map[int]int{},
 			ModeType3: map[int]int{},
 		},
-		DroneQueue: make(map[int][]Point, 0),
+		DroneQueue:  make(map[int][]Point, 0),
+		PrevMonster: make([]Creature, 0),
 	}
 }

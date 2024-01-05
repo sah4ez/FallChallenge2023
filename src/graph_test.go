@@ -7,7 +7,7 @@ import (
 
 func TestNewGraph3x3(t *testing.T) {
 	src := [][]*Node{}
-	max := 5
+	max := 4
 
 	for i := 0; i < max; i++ {
 		src = append(src, make([]*Node, 0))
