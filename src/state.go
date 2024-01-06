@@ -28,9 +28,11 @@ type State struct {
 	VisibleCreatureCount int
 	Creatures            []Creature
 
-	RadarBlipCount int
-	Radar          []Radar
-	MapRadar       map[int][]Radar
+	RadarBlipCount     int
+	Radar              []Radar
+	MapRadar           map[int][]Radar
+	DroneCreatureRadar map[int]map[int]string
+	AvailableCreatures map[int]struct{}
 }
 
 func (s *State) DebugRadar() {
@@ -76,16 +78,41 @@ func (s *State) CheckCreatureID(droneID int, creatureID int) bool {
 	return false
 }
 
+func (s *State) CreaturesAllScannedOrSaved() bool {
+	hash := map[int]struct{}{}
+	for _, d := range s.MyDrones {
+		if v, ok := s.DroneScnas[d.ID]; ok {
+			for k := range v {
+				hash[k] = struct{}{}
+			}
+		}
+	}
+	allScanned := true
+	for k := range s.MyCreatures {
+		if _, ok := s.AvailableCreatures[k]; !ok {
+			allScanned = false
+			break
+		}
+	}
+	fmt.Fprintf(os.Stderr, "%d %d %d\n", len(s.AvailableCreatures), len(hash), len(s.MyCreatures))
+	if !allScanned {
+		return false
+	}
+	return len(s.AvailableCreatures) <= (len(hash) + len(s.MyCreatures))
+}
+
 func NewState(g *GameState) *State {
 	s := &State{
-		MyCreatures:  make(map[int]struct{}, 0),
-		FoeCreatures: make([]int, 0),
-		MyDrones:     make([]Drone, 0),
-		FoeDrones:    make([]Drone, 0),
-		DroneScnas:   make(map[int]map[int]struct{}, 0),
-		Creatures:    make([]Creature, 0),
-		Radar:        make([]Radar, 0),
-		MapRadar:     make(map[int][]Radar, 0),
+		MyCreatures:        make(map[int]struct{}, 0),
+		FoeCreatures:       make([]int, 0),
+		MyDrones:           make([]Drone, 0),
+		FoeDrones:          make([]Drone, 0),
+		DroneScnas:         make(map[int]map[int]struct{}, 0),
+		Creatures:          make([]Creature, 0),
+		Radar:              make([]Radar, 0),
+		MapRadar:           make(map[int][]Radar, 0),
+		DroneCreatureRadar: make(map[int]map[int]string, 0),
+		AvailableCreatures: make(map[int]struct{}, 0),
 	}
 
 	fmt.Scan(&s.MyScore)
@@ -151,6 +178,16 @@ func NewState(g *GameState) *State {
 		} else {
 			v = append(v, r)
 			s.MapRadar[r.DroneID] = v
+		}
+		if v, ok := s.DroneCreatureRadar[r.DroneID]; !ok {
+			s.DroneCreatureRadar[r.DroneID] = map[int]string{r.CreatureID: r.Radar}
+		} else {
+			v[r.CreatureID] = r.Radar
+			s.DroneCreatureRadar[r.DroneID] = v
+		}
+
+		if g.GetCreature(r.CreatureID).Type >= 0 {
+			s.AvailableCreatures[r.CreatureID] = struct{}{}
 		}
 	}
 	sort.SliceStable(s.Radar, func(i, j int) bool {

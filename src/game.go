@@ -6,10 +6,11 @@ import (
 )
 
 type GameState struct {
-	CreatureCount int
-	Creatures     []*GameCreature
-	MapCreatures  map[int]*GameCreature
-	PrevMonster   []Creature
+	CreatureCount   int
+	Creatures       []*GameCreature
+	MapCreatures    map[int]*GameCreature
+	PrevMonster     []Creature
+	PrevPrevMonster []Creature
 
 	Resurface       map[int]Point
 	DroneTarget     map[int]int
@@ -19,7 +20,8 @@ type GameState struct {
 
 	MapDroneLigthCount map[string]map[int]int
 
-	DroneQueue map[int][]Point
+	DroneQueue         map[int][]Point
+	DorneNextLightTick map[int]int
 
 	Tick   int
 	States map[int]*State
@@ -101,6 +103,30 @@ func (g *State) GetCreaturePosition(creatureID int) *Creature {
 		}
 	}
 	return nil
+}
+
+func (g *State) GetDrone(dorneID int) *Drone {
+	for _, v := range g.MyDrones {
+		if v.ID == dorneID {
+			return &v
+		}
+	}
+	return nil
+}
+
+func (g *GameState) OnDroneDepth(creature *GameCreature, drone *Drone) bool {
+	switch creature.Type {
+	case -1:
+		return false
+	case 0:
+		return 2500 <= drone.Y && drone.Y <= 5000
+	case 1:
+		return 5000 <= drone.Y && drone.Y <= 7500
+	case 2:
+		return 7500 <= drone.Y && drone.Y <= 10000
+	default:
+		return false
+	}
 }
 
 func (g *GameState) DebugCreatures() {
@@ -219,7 +245,9 @@ func NewGame() *GameState {
 			ModeType2: map[int]int{},
 			ModeType3: map[int]int{},
 		},
-		DroneQueue:  make(map[int][]Point, 0),
-		PrevMonster: make([]Creature, 0),
+		DroneQueue:         make(map[int][]Point, 0),
+		PrevMonster:        make([]Creature, 0),
+		PrevPrevMonster:    make([]Creature, 0),
+		DorneNextLightTick: make(map[int]int, 0),
 	}
 }

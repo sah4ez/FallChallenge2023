@@ -159,9 +159,23 @@ func (d *Drone) Position() Point {
 }
 
 func (d *Drone) TurnLight(g *GameState) {
-	// cnt := g.GetCoutLights(d)
+	if d.Y < MinLigthDepth {
+		return
+	}
+	var enable bool
+	if v, ok := g.DorneNextLightTick[d.ID]; ok {
+		if v == 1 {
+			delete(g.DorneNextLightTick, d.ID)
+		} else {
+			v -= 1
+			g.DorneNextLightTick[d.ID] = v
+		}
+	} else {
+		g.DorneNextLightTick[d.ID] = DroneLightTick
+		enable = true
+	}
 
-	if d.Battery >= LightBattary && d.Y > MinLigthDepth {
+	if d.Battery >= LightBattary && enable {
 		d.enabledLight = true
 	}
 	fmt.Fprintf(os.Stderr, "turn light: %d %d  %v\n", d.ID, d.Battery, d.enabledLight)
@@ -261,7 +275,19 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 		endY = MaxPosistionY
 	}
 
-	location := make([][]*Node, int(math.Floor(float64(endX-startX)/StepScan)))
+	sizeX := int(math.Floor(float64(endX-startX) / StepScan))
+	if sizeX%2 == 0 {
+		sizeX += 1
+		endX += int(StepScan / 2)
+		startX -= int(StepScan / 2)
+	}
+	sizeY := int(math.Floor(float64(endY-startY) / StepScan))
+	if sizeY%2 == 0 {
+		sizeY += 1
+		endY += int(StepScan / 2)
+		startY -= int(StepScan / 2)
+	}
+	location := make([][]*Node, sizeX)
 	i := 0
 	monsters := []Creature{}
 	for _, c := range s.Creatures {
@@ -270,7 +296,7 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 			monsters = append(monsters, c)
 		}
 	}
-	fmt.Fprintln(os.Stderr, "monsters", len(monsters), "prev", len(g.PrevMonster))
+	fmt.Fprintln(os.Stderr, "monsters", len(monsters), "prev", len(g.PrevMonster), "prevprev", len(g.PrevPrevMonster))
 	if len(monsters) == 0 {
 		prevStep := 2.0
 		for _, m := range g.PrevMonster {
@@ -282,7 +308,7 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 		if i >= len(location) {
 			continue
 		}
-		location[i] = make([]*Node, int(math.Floor(float64(endY-startY)/StepScan)))
+		location[i] = make([]*Node, sizeY)
 		j := 0
 		for y := startY; y < endY; y += int(StepScan) {
 			if j >= len(location[i]) {
@@ -290,15 +316,18 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 			}
 			from := Point{X: x, Y: y}
 			score := 0
-			if d.NearMonster && false {
-				nearest := NearestNode(d.radiusPoint, from)
-				for _, c := range nearest.CreaturesTypes {
-					if c.Type < 0 {
+			if !d.NearMonster {
+				if v, ok := g.DroneTarget[d.ID]; ok {
+					if radar, ok := s.DroneCreatureRadar[d.ID][v]; ok {
+						score += RadarToScore(radar, from, d)
+					}
+				}
+			}
+			for _, foeDrone := range s.FoeDrones {
+				if d.DistanceToPoint(foeDrone.Position()) <= AutoScanDistance {
+					if foeDrone.DistanceToPoint(from) <= DroneSize/2 {
 						score -= 1
 					}
-					// else {
-					// score += 1
-					// }
 				}
 			}
 			for _, m := range monsters {
@@ -310,15 +339,21 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 				}
 			}
 
-			if len(monsters) == 0 {
-				prevStep := 2.0
-				for _, m := range g.PrevMonster {
-					if d.DistanceToPoint(m.Point()) <= prevStep*MonsterDistanceDetect {
-						if LocationDistance(from, m.MultNextPoint(prevStep)) <= MonsterDistanceDetect {
-							score -= 1
-						}
-					}
+			prevStep := 2.0
+			for _, m := range g.PrevMonster {
+				// if d.DistanceToPoint(m.Point()) <= prevStep*MonsterDistanceDetect {
+				if LocationDistance(from, m.MultNextPoint(prevStep)) <= MonsterDistanceDetect {
+					score -= 1
 				}
+				// }
+			}
+			prevStep = 3.0
+			for _, m := range g.PrevPrevMonster {
+				// if d.DistanceToPoint(m.Point()) <= MonsterDistanceDetect {
+				if LocationDistance(from, m.MultNextPoint(prevStep)) <= MonsterDistanceDetect {
+					score -= 1
+				}
+				// }
 			}
 			if NearLeft(from) {
 				score -= 1

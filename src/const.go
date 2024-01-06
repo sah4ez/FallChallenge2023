@@ -1,13 +1,14 @@
 package main
 
 const SurfaceDistance = 500.0
+const ResurfaceDistance = 300
 const DroneSurfaceDistance = 499.0
 const AutoScanDistance = 800.0
 const StepScan = float64(150.0)
 const AutoScanMonsterDistance = 1099.0
 const MaxAutoScanDistance = 2000.0
 const ShiftByRadarDistance = 600
-const MonsterDistanceDetect = 900
+const MonsterDistanceDetect = 950
 const MaxPosistionX = 9999
 const MaxPosistionY = 9999
 const MinPosistionX = 0
@@ -26,3 +27,5 @@ const RadarBL = "BL"
 const RadarBR = "BR"
 const MinLigthDepth = 2200
 const DroneSize = 300.0
+const DroneLightTick = 3
+const MaxDepthInPath = 8300

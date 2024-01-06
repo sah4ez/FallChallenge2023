@@ -69,19 +69,25 @@ func BottomSide(p Point) Point {
 
 func NearLeft(p Point) bool {
 	side := LeftSide(p)
-	return math.Abs(LocationDistance(side, p)) < DroneSize
+	return math.Abs(LocationDistance(side, p)) < DroneSize/2
 }
 
 func NearRight(p Point) bool {
 	side := RightSide(p)
-	return math.Abs(LocationDistance(side, p)) < DroneSize
+	return math.Abs(LocationDistance(side, p)) < DroneSize/2
 }
 
 func NearBottom(p Point) bool {
 	side := BottomSide(p)
-	return math.Abs(LocationDistance(side, p)) < DroneSize
+	return math.Abs(LocationDistance(side, p)) < DroneSize/2
 }
 
 func InCorner(p Point) bool {
 	return (NearRight(p) && NearBottom(p)) || (NearLeft(p) && NearBottom(p))
+}
+
+func DebugPath(path []*Node) {
+	for _, p := range path {
+		fmt.Fprintf(os.Stderr, "(%d:%d:%d:%d)", p.X, p.Y, p.Score, p.Steps)
+	}
 }

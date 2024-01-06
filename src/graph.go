@@ -160,7 +160,7 @@ func FillLocation(i, j int, nodes [][]*Node, used map[Point]struct{}) []*Node {
 		}
 		for i, p := range path {
 			score += p.Score
-			// fmt.Fprintf(os.Stderr, "(%d:%d:%d)->", p.I, p.J, score)
+			// fmt.Fprintf(os.Stderr, "(%d:%d:%d)\n", p.I, p.J, score)
 			if i == len(path)-1 {
 				if p.X == 0 || p.Y == 0 {
 					p.Score = score - odd

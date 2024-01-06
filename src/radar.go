@@ -35,6 +35,28 @@ func RadarToDirection(radar string) (x int, y int) {
 	}
 }
 
+func RadarToScore(radar string, p Point, drone *Drone) int {
+	switch radar {
+	case RadarTL:
+		if p.X < drone.X && p.Y < drone.Y {
+			return 1
+		}
+	case RadarTR:
+		if p.X > drone.X && p.Y < drone.Y {
+			return 1
+		}
+	case RadarBL:
+		if p.X < drone.X && p.Y > drone.Y {
+			return 1
+		}
+	case RadarBR:
+		if p.X > drone.X && p.Y > drone.Y {
+			return 1
+		}
+	}
+	return 0
+}
+
 func NewRadar() Radar {
 	r := Radar{}
 	fmt.Scan(&r.DroneID, &r.CreatureID, &r.Radar)
