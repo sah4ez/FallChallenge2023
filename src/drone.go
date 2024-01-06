@@ -317,9 +317,11 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 			from := Point{X: x, Y: y}
 			score := 0
 			if !d.NearMonster {
-				if v, ok := g.DroneTarget[d.ID]; ok {
-					if radar, ok := s.DroneCreatureRadar[d.ID][v]; ok {
-						score += RadarToScore(radar, from, d)
+				if v, ok := g.DroneTarget2[d.ID]; ok {
+					for _, vv := range v {
+						if radar, ok := s.DroneCreatureRadar[d.ID][vv]; ok {
+							score += RadarToScore(radar, from, d)
+						}
 					}
 				}
 			}

@@ -14,6 +14,7 @@ type GameState struct {
 
 	Resurface       map[int]Point
 	DroneTarget     map[int]int
+	DroneTarget2    map[int][]int
 	TargetCreatures map[int]struct{}
 
 	CreaturesTouched map[int]map[int]struct{}
@@ -237,6 +238,7 @@ func NewGame() *GameState {
 		States:           make(map[int]*State),
 		Resurface:        make(map[int]Point),
 		DroneTarget:      make(map[int]int),
+		DroneTarget2:     make(map[int][]int),
 		TargetCreatures:  make(map[int]struct{}, 0),
 		CreaturesTouched: make(map[int]map[int]struct{}, 0),
 		MapDroneLigthCount: map[string]map[int]int{
