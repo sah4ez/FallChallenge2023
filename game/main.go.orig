@@ -146,7 +146,7 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 	return
 }
 
-func (d *Drone) FindearCaptureByRadar(g *GameState, s *State) (p Point, dd float64, cID int) {
+func (d *Drone) FindNearCaptureByRadar(g *GameState, s *State) (p Point, dd float64, cID int) {
 	hashCreatres := map[int]struct{}{}
 	p = Point{X: d.X, Y: d.Y}
 	exists := map[int]struct{}{}
@@ -404,8 +404,13 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 				if LocationDistance(from, m.NextPoint()) <= MonsterDistanceDetect {
 					score -= 1
 				}
-				if LocationDistance(from, Point{X: d.X + m.Vx, Y: d.Y + m.Vy}) <= MonsterSize/2+DroneSize/2 {
-					score += 1
+			}
+			if len(monsters) > 1 {
+
+				for _, m := range monsters {
+					if LocationDistance(from, Point{X: d.X + m.Vx, Y: d.Y + m.Vy}) <= MonsterSize/2+DroneSize/2 {
+						score += 1
+					}
 				}
 			}
 
@@ -425,13 +430,13 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 				}
 				// }
 			}
-			if InCorner(from) {
+			if NearLeft(from) {
 				score -= 1
 			} else if NearRight(from) {
 				score -= 1
 			} else if NearBottom(from) {
 				score -= 1
-			} else if NearLeft(from) {
+			} else if InCorner(from) {
 				score -= 1
 			}
 			n := &Node{
