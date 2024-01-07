@@ -261,27 +261,55 @@ func main() {
 			drone.SolveRadarRadius(game, s.MapRadar[drone.ID])
 			drone.DebugRadarRadius()
 
-			resurface := ResurfaceByScore(game, s)
 			newPoint := game.FirstCommand(drone)
-			if len(game.DroneQueue[drone.ID]) == startQueueLen && math.Abs(float64(newPoint.Y-drone.Y)) < DroneSize {
+			case1 := len(game.DroneQueue[drone.ID]) == startQueueLen && math.Abs(float64(newPoint.Y-drone.Y)) < DroneSize
+			case2 := ResurfaceByScore(game, s)
+			case3 := newPoint.Y-drone.Y >= 0 && len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature()
+			case4 := drone.DistanceToPoint(newPoint) < SurfaceDistance
+			case5 := drone.Y > MinPosistionY/2 && len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature()
+
+			if case1 {
 				newPoint = game.PopCommand(drone)
 				if drone.Y > MaxPosistionY/2 {
-					game.DroneQueue[drone.ID][0].X = drone.X
+					if len(game.DroneQueue[drone.ID]) >= 2 {
+						game.DroneQueue[drone.ID][1].X = drone.X
+					}
+					if len(game.DroneQueue[drone.ID]) >= 1 {
+						if len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature() {
+							newPoint.Y = ResurfaceDistance
+						}
+						game.DroneQueue[drone.ID][0].X = drone.X
+					}
 					newPoint.X = drone.X
 				}
-			} else if resurface {
+			} else if case2 {
 				newPoint.X = drone.X
 				newPoint.Y = ResurfaceDistance
+				game.DroneQueue[drone.ID][0].X = drone.X
 				game.DroneQueue[drone.ID][0].Y = ResurfaceDistance
-				fmt.Fprintln(os.Stderr, "resurface by score drone", drone.ID)
 				delete(game.DroneTarget2, drone.ID)
-			} else if drone.DistanceToPoint(newPoint) < SurfaceDistance {
+			} else if case3 {
 				newPoint = game.PopCommand(drone)
 				if drone.Y > MaxPosistionY/2 {
 					game.DroneQueue[drone.ID][0].X = drone.X
 					newPoint.X = drone.X
 				}
+			} else if case4 {
+				newPoint = game.PopCommand(drone)
+				if drone.Y > MaxPosistionY/2 || len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature() {
+					game.DroneQueue[drone.ID][0].X = drone.X
+					newPoint.X = drone.X
+				}
+			} else if case5 {
+				newPoint = game.PopCommand(drone)
+				if drone.Y > MaxPosistionY/2 || len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature() {
+					game.DroneQueue[drone.ID][0].X = drone.X
+					game.DroneQueue[drone.ID][0].Y = ResurfaceDistance
+					newPoint.X = drone.X
+					newPoint.Y = ResurfaceDistance
+				}
 			}
+			fmt.Fprintln(os.Stderr, drone.ID, "c1", case1, case2, case3, case4, case5, "(", newPoint.X, newPoint.Y, ")", len(game.DroneQueue[drone.ID]), "==", startQueueLen, math.Abs(float64(newPoint.Y-drone.Y)), "<", DroneSize, drone.Y > MinPosistionY/2)
 			m := drone.Solve(game, s, s.MapRadar[drone.ID], newPoint)
 			if drone.ID == 0 || drone.ID == 3 {
 				// DebugLocation(m, drone.ID, newPoint)

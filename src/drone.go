@@ -86,7 +86,7 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 
 func (d *Drone) FindNearCaptureByRadar(g *GameState, s *State) (p Point, dd float64, cID int) {
 	hashCreatres := map[int]struct{}{}
-	p = Point{X: d.Y, Y: d.Y}
+	p = Point{X: d.X, Y: d.Y}
 	exists := map[int]struct{}{}
 	for _, r := range s.Radar {
 		exists[r.CreatureID] = struct{}{}
@@ -259,21 +259,21 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 	// distance = int(MaxAutoScanDistance)
 	// }
 	startX := d.X - distance
-	if startX < 0 {
-		startX = 0
-	}
+	// if startX < 0 {
+	// startX = 0
+	// }
 	startY := d.Y - distance
-	if startY < 0 {
-		startY = 0
-	}
+	// if startY < 0 {
+	// startY = 0
+	// }
 	endX := d.X + distance
-	if endX >= MaxPosistionX {
-		endX = MaxPosistionX
-	}
+	// if endX >= MaxPosistionX {
+	// endX = MaxPosistionX
+	// }
 	endY := d.Y + distance
-	if endY >= MaxPosistionY {
-		endY = MaxPosistionY
-	}
+	// if endY >= MaxPosistionY {
+	// endY = MaxPosistionY
+	// }
 
 	sizeX := int(math.Floor(float64(endX-startX) / StepScan))
 	if sizeX%2 == 0 {
@@ -338,6 +338,14 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 				}
 				if LocationDistance(from, m.NextPoint()) <= MonsterDistanceDetect {
 					score -= 1
+				}
+			}
+			if len(monsters) > 1 {
+
+				for _, m := range monsters {
+					if LocationDistance(from, Point{X: d.X + m.Vx, Y: d.Y + m.Vy}) <= MonsterSize/2+DroneSize/2 {
+						score += 1
+					}
 				}
 			}
 

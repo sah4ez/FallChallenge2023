@@ -12,7 +12,7 @@ import (
 )
 
 const SurfaceDistance = 500.0
-const ResurfaceDistance = 300
+const ResurfaceDistance = 400
 const DroneSurfaceDistance = 499.0
 const AutoScanDistance = 800.0
 const StepScan = float64(150.0)
@@ -38,6 +38,7 @@ const RadarBL = "BL"
 const RadarBR = "BR"
 const MinLigthDepth = 2200
 const DroneSize = 300.0
+const MonsterSize = 600.0
 const DroneLightTick = 2
 const MaxDepthInPath = 8300
 const MaxColorSize = 3
@@ -147,7 +148,7 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 
 func (d *Drone) FindNearCaptureByRadar(g *GameState, s *State) (p Point, dd float64, cID int) {
 	hashCreatres := map[int]struct{}{}
-	p = Point{X: d.Y, Y: d.Y}
+	p = Point{X: d.X, Y: d.Y}
 	exists := map[int]struct{}{}
 	for _, r := range s.Radar {
 		exists[r.CreatureID] = struct{}{}
@@ -320,21 +321,21 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 	// distance = int(MaxAutoScanDistance)
 	// }
 	startX := d.X - distance
-	if startX < 0 {
-		startX = 0
-	}
+	// if startX < 0 {
+	// startX = 0
+	// }
 	startY := d.Y - distance
-	if startY < 0 {
-		startY = 0
-	}
+	// if startY < 0 {
+	// startY = 0
+	// }
 	endX := d.X + distance
-	if endX >= MaxPosistionX {
-		endX = MaxPosistionX
-	}
+	// if endX >= MaxPosistionX {
+	// endX = MaxPosistionX
+	// }
 	endY := d.Y + distance
-	if endY >= MaxPosistionY {
-		endY = MaxPosistionY
-	}
+	// if endY >= MaxPosistionY {
+	// endY = MaxPosistionY
+	// }
 
 	sizeX := int(math.Floor(float64(endX-startX) / StepScan))
 	if sizeX%2 == 0 {
@@ -379,6 +380,9 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 			score := 0
 			if !d.NearMonster {
 				if v, ok := g.DroneTarget2[d.ID]; ok {
+					if len(v) == 0 {
+						score -= 1
+					}
 					for _, vv := range v {
 						if radar, ok := s.DroneCreatureRadar[d.ID][vv]; ok {
 							score += RadarToScore(radar, from, d)
@@ -399,6 +403,14 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 				}
 				if LocationDistance(from, m.NextPoint()) <= MonsterDistanceDetect {
 					score -= 1
+				}
+			}
+			if len(monsters) > 1 {
+
+				for _, m := range monsters {
+					if LocationDistance(from, Point{X: d.X + m.Vx, Y: d.Y + m.Vy}) <= MonsterSize/2+DroneSize/2 {
+						score += 1
+					}
 				}
 			}
 
@@ -738,6 +750,10 @@ type GameState struct {
 
 	Tick   int
 	States map[int]*State
+}
+
+func (g *GameState) CoundScoringCreature() int {
+	return 6
 }
 
 func (g *GameState) LoadCreatures() {
@@ -1349,7 +1365,7 @@ func main() {
 
 	var once sync.Once
 	var onceDrone sync.Once
-	startQueueLen := 0
+	startQueueLen := 36
 
 	for {
 		s := game.LoadState()
@@ -1401,8 +1417,22 @@ func main() {
 				game.MoveDrone(drone, Point{X: posX, Y: MaxDepthInPath})
 				game.MoveDrone(drone, Point{X: posX + deltaX, Y: MaxDepthInPath})
 				game.MoveDrone(drone, Point{X: posX, Y: ResurfaceDistance})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX + deltaX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX, Y: ResurfaceDistance})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX + deltaX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX, Y: ResurfaceDistance})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX + deltaX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX, Y: ResurfaceDistance})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX + deltaX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX, Y: ResurfaceDistance})
+				game.MoveDrone(drone, Point{X: posX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX + deltaX, Y: MaxDepthInPath})
+				game.MoveDrone(drone, Point{X: posX, Y: ResurfaceDistance})
 			}
-			startQueueLen = len(game.DroneQueue[0])
 		})
 
 		leftDrone, rightDrone := s.MyDrones[0].ID, s.MyDrones[1].ID
@@ -1421,10 +1451,14 @@ func main() {
 			}
 			var scanned bool
 			for _, k := range s.MyDrones {
-				if len(game.DroneQueue[k.ID]) == startQueueLen {
+				// if len(game.DroneQueue[k.ID]) == startQueueLen {
+				// continue
+				// }
+				if k.DetectMode() == ModeType0 {
+					delete(game.DroneTarget2, drone.ID)
 					continue
 				}
-				if k.DetectMode() == ModeType0 {
+				if k.DetectMode() == ModeType1 && len(s.DroneScnas[k.ID]) >= game.CoundScoringCreature() {
 					delete(game.DroneTarget2, drone.ID)
 					continue
 				}
@@ -1473,8 +1507,9 @@ func main() {
 						if radar, ok := v[r.CreatureID]; ok && radar == r.Radar {
 							firstPoint := game.FirstCommand(*drone)
 							// to resurface
-							if firstPoint.Y < MaxPosistionY/2 {
-								d := leftDrone
+							d := leftDrone
+							if firstPoint.Y < MaxPosistionY/2 && len(s.DroneScnas[rightDrone]) < game.CoundScoringCreature() {
+								fmt.Fprintln(os.Stderr, "from", leftDrone, "added", r.CreatureID, "to", rightDrone, r.Radar)
 								if v, ok := game.DroneTarget2[d]; !ok {
 									game.DroneTarget2[d] = []int{r.CreatureID}
 								} else {
@@ -1490,8 +1525,9 @@ func main() {
 						if radar, ok := v[r.CreatureID]; ok && radar == r.Radar {
 							firstPoint := game.FirstCommand(*drone)
 							// to resurface
-							if firstPoint.Y < MaxPosistionY/2 {
-								d := rightDrone
+							d := rightDrone
+							if firstPoint.Y < MaxPosistionY/2 && len(s.DroneScnas[leftDrone]) < game.CoundScoringCreature() {
+								fmt.Fprintln(os.Stderr, "from", leftDrone, "added", r.CreatureID, "to", rightDrone, r.Radar)
 								if v, ok := game.DroneTarget2[d]; !ok {
 									game.DroneTarget2[d] = []int{r.CreatureID}
 								} else {
@@ -1507,8 +1543,9 @@ func main() {
 						if radar, ok := v[r.CreatureID]; ok && radar == r.Radar {
 							firstPoint := game.FirstCommand(*drone)
 							// to bottom
+							d := leftDrone
 							if firstPoint.Y > MaxPosistionY/2 {
-								d := leftDrone
+								fmt.Fprintln(os.Stderr, "from", leftDrone, "added", r.CreatureID, "to", rightDrone, r.Radar)
 								if v, ok := game.DroneTarget2[d]; !ok {
 									game.DroneTarget2[d] = []int{r.CreatureID}
 								} else {
@@ -1524,8 +1561,9 @@ func main() {
 						if radar, ok := v[r.CreatureID]; ok && radar == r.Radar {
 							firstPoint := game.FirstCommand(*drone)
 							// to bottom
+							d := rightDrone
 							if firstPoint.Y > MaxPosistionY/2 {
-								d := rightDrone
+								fmt.Fprintln(os.Stderr, "from", leftDrone, "added", r.CreatureID, "to", rightDrone, r.Radar)
 								if v, ok := game.DroneTarget2[d]; !ok {
 									game.DroneTarget2[d] = []int{r.CreatureID}
 								} else {
@@ -1573,27 +1611,55 @@ func main() {
 			drone.SolveRadarRadius(game, s.MapRadar[drone.ID])
 			drone.DebugRadarRadius()
 
-			resurface := ResurfaceByScore(game, s)
 			newPoint := game.FirstCommand(drone)
-			if len(game.DroneQueue[drone.ID]) == startQueueLen && math.Abs(float64(newPoint.Y-drone.Y)) < DroneSize {
+			case1 := len(game.DroneQueue[drone.ID]) == startQueueLen && math.Abs(float64(newPoint.Y-drone.Y)) < DroneSize
+			case2 := ResurfaceByScore(game, s)
+			case3 := newPoint.Y-drone.Y >= 0 && len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature()
+			case4 := drone.DistanceToPoint(newPoint) < SurfaceDistance
+			case5 := drone.Y > MinPosistionY/2 && len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature()
+
+			if case1 {
 				newPoint = game.PopCommand(drone)
 				if drone.Y > MaxPosistionY/2 {
-					game.DroneQueue[drone.ID][0].X = drone.X
+					if len(game.DroneQueue[drone.ID]) >= 2 {
+						game.DroneQueue[drone.ID][1].X = drone.X
+					}
+					if len(game.DroneQueue[drone.ID]) >= 1 {
+						if len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature() {
+							newPoint.Y = ResurfaceDistance
+						}
+						game.DroneQueue[drone.ID][0].X = drone.X
+					}
 					newPoint.X = drone.X
 				}
-			} else if resurface {
+			} else if case2 {
 				newPoint.X = drone.X
 				newPoint.Y = ResurfaceDistance
+				game.DroneQueue[drone.ID][0].X = drone.X
 				game.DroneQueue[drone.ID][0].Y = ResurfaceDistance
-				fmt.Fprintln(os.Stderr, "resurface by score drone", drone.ID)
 				delete(game.DroneTarget2, drone.ID)
-			} else if drone.DistanceToPoint(newPoint) < SurfaceDistance {
+			} else if case3 {
 				newPoint = game.PopCommand(drone)
 				if drone.Y > MaxPosistionY/2 {
 					game.DroneQueue[drone.ID][0].X = drone.X
 					newPoint.X = drone.X
 				}
+			} else if case4 {
+				newPoint = game.PopCommand(drone)
+				if drone.Y > MaxPosistionY/2 || len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature() {
+					game.DroneQueue[drone.ID][0].X = drone.X
+					newPoint.X = drone.X
+				}
+			} else if case5 {
+				newPoint = game.PopCommand(drone)
+				if drone.Y > MaxPosistionY/2 || len(s.DroneScnas[drone.ID]) >= game.CoundScoringCreature() {
+					game.DroneQueue[drone.ID][0].X = drone.X
+					game.DroneQueue[drone.ID][0].Y = ResurfaceDistance
+					newPoint.X = drone.X
+					newPoint.Y = ResurfaceDistance
+				}
 			}
+			fmt.Fprintln(os.Stderr, drone.ID, "c1", case1, case2, case3, case4, case5, "(", newPoint.X, newPoint.Y, ")", len(game.DroneQueue[drone.ID]), "==", startQueueLen, math.Abs(float64(newPoint.Y-drone.Y)), "<", DroneSize, drone.Y > MinPosistionY/2)
 			m := drone.Solve(game, s, s.MapRadar[drone.ID], newPoint)
 			if drone.ID == 0 || drone.ID == 3 {
 				// DebugLocation(m, drone.ID, newPoint)

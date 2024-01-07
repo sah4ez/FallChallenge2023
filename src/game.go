@@ -28,6 +28,10 @@ type GameState struct {
 	States map[int]*State
 }
 
+func (g *GameState) CoundScoringCreature() int {
+	return 6
+}
+
 func (g *GameState) LoadCreatures() {
 
 	fmt.Scan(&g.CreatureCount)
