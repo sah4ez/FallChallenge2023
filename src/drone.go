@@ -340,6 +340,7 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 					score -= 1
 				}
 			}
+			/* opposite to monster direction
 			if len(monsters) > 1 {
 
 				for _, m := range monsters {
@@ -348,6 +349,7 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 					}
 				}
 			}
+			*/
 
 			prevStep := 2.0
 			for _, m := range g.PrevMonster {

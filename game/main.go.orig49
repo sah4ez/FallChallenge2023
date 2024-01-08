@@ -12,7 +12,7 @@ import (
 )
 
 const SurfaceDistance = 500.0
-const ResurfaceDistance = 400
+const ResurfaceDistance = 300
 const DroneSurfaceDistance = 499.0
 const AutoScanDistance = 800.0
 const StepScan = float64(150.0)
@@ -38,7 +38,6 @@ const RadarBL = "BL"
 const RadarBR = "BR"
 const MinLigthDepth = 2200
 const DroneSize = 300.0
-const MonsterSize = 600.0
 const DroneLightTick = 2
 const MaxDepthInPath = 8300
 const MaxColorSize = 3
@@ -146,7 +145,7 @@ func (d *Drone) FindNearCapture(g *GameState, s *State) (p Point, dd float64, cI
 	return
 }
 
-func (d *Drone) FindNearCaptureByRadar(g *GameState, s *State) (p Point, dd float64, cID int) {
+func (d *Drone) FindearCaptureByRadar(g *GameState, s *State) (p Point, dd float64, cID int) {
 	hashCreatres := map[int]struct{}{}
 	p = Point{X: d.X, Y: d.Y}
 	exists := map[int]struct{}{}
@@ -402,16 +401,6 @@ func (d *Drone) Solve(g *GameState, s *State, radar []Radar, target Point) [][]*
 					score -= 1
 				}
 			}
-			/* opposite to monster direction
-			if len(monsters) > 1 {
-
-				for _, m := range monsters {
-					if LocationDistance(from, Point{X: d.X + m.Vx, Y: d.Y + m.Vy}) <= MonsterSize/2+DroneSize/2 {
-						score += 1
-					}
-				}
-			}
-			*/
 
 			prevStep := 2.0
 			for _, m := range g.PrevMonster {
@@ -749,10 +738,6 @@ type GameState struct {
 
 	Tick   int
 	States map[int]*State
-}
-
-func (g *GameState) CoundScoringCreature() int {
-	return 6
 }
 
 func (g *GameState) LoadCreatures() {
@@ -1454,7 +1439,7 @@ func main() {
 				if len(game.DroneQueue[k.ID]) == startQueueLen {
 					continue
 				}
-				if k.DetectMode() == ModeType1 && len(s.DroneScnas[k.ID]) >= game.CoundScoringCreature() {
+				if k.DetectMode() == ModeType0 {
 					delete(game.DroneTarget2, drone.ID)
 					continue
 				}
